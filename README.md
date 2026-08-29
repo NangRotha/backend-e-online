@@ -36,6 +36,12 @@ Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដ�
 > **RENDER** ត្រូវបាន Render កំណត់ដោយស្វ័យប្រវត្តិ (`RENDER=true`) —
 > code នឹងប្រើ `DATABASE_URL_INTERNAL` ដោយស្វ័យប្រវត្តិ។
 
+> **Python Version:** Render default ថ្មីគឺ **3.14** (មិនទាន់មាន wheel សម្រាប់
+> បណ្ណាល័យខ្លះទេ) — ដូច្នេះ repo នេះប្រើ **Python 3.12**។
+> - Manual Web Service៖ ដាក់ Env Var `PYTHON_VERSION=3.12.10` (ឬ Render អាន
+>   `backend/.python-version` ដែលផ្ទុក `3.12`)
+> - Blueprint៖ ប្រើ `pythonVersion: 3.12.8` ក្នុង `render.yaml` (បានកំណត់រួចហើយ)
+
 ### វិធីទី 2 — Web Service (Manual)
 
 1. Render Dashboard → **New → Web Service** → ជ្រើស repo
