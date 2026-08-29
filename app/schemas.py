@@ -1,0 +1,170 @@
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
+from datetime import datetime
+
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    role: str
+    email_verified: bool = False
+    profile_image: str = ""
+    class Config:
+        from_attributes = True
+
+class ProfileUpdate(BaseModel):
+    name: str
+    profile_image: str = ""
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class RegisterResponse(BaseModel):
+    message: str
+    email: EmailStr
+    dev_otp: Optional[str] = None  # បង្ហាញតែពេល SMTP មិនទាន់កំណត់ (Dev Mode)
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+class TelegramAuthData(BaseModel):
+    """ទិន្នន័យដែល Telegram Login Widget ផ្ញើមក"""
+    id: int
+    first_name: str = ""
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+    photo_url: Optional[str] = None
+    auth_date: int
+    hash: str
+
+class CategoryCreate(BaseModel):
+    name: str
+    description: str = ""
+
+class CategoryUpdate(BaseModel):
+    name: str
+    description: str = ""
+
+class CategoryOut(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    product_count: int = 0  # ចំនួនផលិតផលដែលប្រើ Category នេះ
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class SlideCreate(BaseModel):
+    title: str = ""
+    subtitle: str = ""
+    media_type: str = "image"  # 'image' | 'video' | 'youtube'
+    media_url: str = ""        # រូប/វីដេអូដែល Upload
+    youtube_url: str = ""      # តំណ YouTube ពេញ
+    link_url: str = ""         # តំណពេលចុច (optional)
+    sort_order: int = 0
+    is_active: bool = True
+
+class SlideUpdate(SlideCreate):
+    pass
+
+class SlideOut(SlideCreate):
+    id: int
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class ProductCreate(BaseModel):
+    name: str
+    description: str = ""
+    price: float
+    stock: int
+    image_url: str = ""  # រូបមេ
+    images: Optional[List[str]] = None  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
+    category: str = ""
+    is_on_sale: bool = False
+    sale_percent: float = 0
+
+class ProductOut(ProductCreate):
+    id: int
+    class Config:
+        from_attributes = True
+
+class CheckoutItem(BaseModel):
+    product_id: int
+    quantity: int
+
+class CheckoutRequest(BaseModel):
+    items: Optional[List[CheckoutItem]] = None
+    product_id: Optional[int] = None
+    quantity: Optional[int] = None
+    promo_code: Optional[str] = None
+    shipping_address: str
+
+class CheckoutResponse(BaseModel):
+    order_id: int
+    total_amount: float
+    status: str
+    payment_url: str  # សម្រាប់អ្នកប្រើប្រាស់ចុចបង់ប្រាក់
+
+class DiscountCreate(BaseModel):
+    code: str
+    percent: float
+    max_uses: int = 100
+    expiry_date: Optional[str]
+
+class SiteSettingUpdate(BaseModel):
+    key: str
+    value: str
+
+class AlertCreate(BaseModel):
+    title: str = ""
+    message: str = ""
+    alert_type: str = "info"  # 'info' | 'success' | 'warning' | 'danger'
+    style: str = "both"       # 'banner' | 'popup' | 'both'
+    image_url: str = ""       # រូបភាព (Upload ពីកុំព្យូទ័រ ឬ URL)
+    link_url: str = ""
+    is_active: bool = True
+    starts_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+class AlertUpdate(AlertCreate):
+    pass
+
+class AlertOut(AlertCreate):
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class ChatMessage(BaseModel):
+    role: str  # 'user' | 'assistant'
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[ChatMessage]] = None
+
+class RoleUpdate(BaseModel):
+    role: str  # 'admin' or 'user'
+
+class OrderStatusUpdate(BaseModel):
+    status: str  # 'pending', 'paid', 'shipped', 'cancelled'

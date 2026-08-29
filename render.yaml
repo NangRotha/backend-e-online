@@ -1,0 +1,60 @@
+# ============================================================
+# Render Blueprint — Deploy Backend (FastAPI) លើ Render
+# ============================================================
+# របៀបប្រើ:
+#   1. Push code ទៅ GitHub (ធានាថា render.yaml នេះនៅ root នៃ repo)
+#   2. Render Dashboard -> New -> Blueprint -> ជ្រើស repo នេះ
+#   3. Render នឹងបង្កើត Web Service ដោយស្វ័យប្រវត្តិ
+#   4. ចូលទៅ Service -> Environment ហើយបំពេញ env vars ដែលមាន `sync: false`
+#      (SECRET_KEY, DATABASE_URL, DATABASE_URL_INTERNAL, SMTP_*, TELEGRAM_*, DEEPSEEK_API_KEY, CORS_ORIGINS)
+#
+# ចំណាំ៖
+#   - Free/Starter plan មិនមាន Persistent Disk ទេ -> រូបភាព Upload នឹងបាត់ពេល Redeploy
+#   - បើចង់រក្សារូបភាព ប្រើ plan ដែលគាំទ្រ Disk ហើយបន្ថែម disk + UPLOAD_DIR
+#   - WebSocket real-time ត្រូវការ Single Instance តែប៉ុណ្ណោះ
+#     (កុំ Scale ទៅច្រើន instance ព្រោះ connection manager ស្ថិតក្នុង Memory)
+services:
+  - type: web
+    name: ecommerce-api
+    runtime: python
+    pythonVersion: 3.11.9
+    plan: free
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ
+      - key: SECRET_KEY
+        generateValue: true
+      # Origin ដែលអនុញ្ញាតឱ្យភ្ជាប់មក API (ញែកដោយសញ្ញាក្បៀស)
+      # ឧ. https://your-shop.vercel.app,https://your-admin.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_INTERNAL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_FROM_NAME
+        sync: false
+      - key: SMTP_USE_SSL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      # ថតរក្សារូបភាព (បើប្រើ Persistent Disk -> UPLOAD_DIR=/var/data/uploads)
+      - key: UPLOAD_DIR
+        sync: false

@@ -1,0 +1,108 @@
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy.sql import func
+from .database import Base
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default="user")  # 'admin' or 'user'
+    email_verified = Column(Boolean, default=False)  # បានផ្ទៀងផ្ទាត់ OTP ឬអត់
+    telegram_id = Column(Integer, unique=True, index=True, nullable=True)  # Telegram user id (Login ជាមួយ Telegram)
+    profile_image = Column(String, default="")  # URL រូប Profile របស់អ្នកប្រើ
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(String)
+    price = Column(Float)
+    stock = Column(Integer, default=0)
+    image_url = Column(String, default="")  # រូបមេ (Main Image)
+    images = Column(JSON, default=list)  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
+    category = Column(String)
+    is_on_sale = Column(Boolean, default=False)
+    sale_percent = Column(Float, default=0)  # ឧទាហរណ៍ 10 = 10% discount
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)  # ឈ្មោះ Category (ឧ. Electronics)
+    description = Column(String, default="")  # ពណ៌នាសង្ខេប
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Slide(Base):
+    __tablename__ = "slides"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, default="")  # ចំណងជើងរបស់ Slide
+    subtitle = Column(String, default="")  # អត្ថបទរង
+    media_type = Column(String, default="image")  # 'image' | 'video' | 'youtube'
+    media_url = Column(String, default="")  # URL រូបភាព / វីដេអូដែល Upload
+    youtube_url = Column(String, default="")  # តំណ YouTube ពេញ (បើ media_type = 'youtube')
+    link_url = Column(String, default="")  # តំណពេលចុចលើ Slide (មិនបាច់ក៏បាន)
+    sort_order = Column(Integer, default=0)  # លំដាប់បង្ហាញ (តូច = មុនគេ)
+    is_active = Column(Boolean, default=True)  # បង្ហាញលើ Storefront ឬអត់
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Order(Base):
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    total_amount = Column(Float)
+    status = Column(String, default="pending")  # 'pending', 'paid', 'shipped'
+    promo_code = Column(String, nullable=True)
+    payment_ref = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    quantity = Column(Integer)
+    price = Column(Float)
+
+class Discount(Base):
+    __tablename__ = "discounts"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True)
+    percent = Column(Float)  # 10 = 10% off
+    max_uses = Column(Integer, default=100)
+    used_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    expiry_date = Column(DateTime, nullable=True)
+
+class SiteSetting(Base):
+    __tablename__ = "site_settings"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True)  # 'site_name', 'site_logo'
+    value = Column(String)
+
+class Alert(Base):
+    """ការជូនដំណឹង / Popup ដែល Admin បង្កើតពី Admin Panel ហើយបង្ហាញលើ Storefront"""
+    __tablename__ = "alerts"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, default="")          # ចំណងជើងរបស់ Alert
+    message = Column(String, default="")        # អត្ថបទលម្អិត
+    alert_type = Column(String, default="info") # 'info' | 'success' | 'warning' | 'danger'
+    style = Column(String, default="both")      # 'banner' | 'popup' | 'both'
+    image_url = Column(String, default="")      # រូបភាព (Upload ពីកុំព្យូទ័រ ឬ URL)
+    link_url = Column(String, default="")       # តំណពេលចុចលើ Alert (optional)
+    is_active = Column(Boolean, default=True)   # បង្ហាញលើ Storefront ឬអត់
+    starts_at = Column(DateTime(timezone=True), nullable=True)  # ចាប់ផ្តើមបង្ហាញ (optional)
+    expires_at = Column(DateTime(timezone=True), nullable=True) # បញ្ចប់ការបង្ហាញ (optional)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class OtpCode(Base):
+    __tablename__ = "otp_codes"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True, nullable=False)
+    code = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
