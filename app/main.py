@@ -13,8 +13,8 @@ app = FastAPI(title="E-commerce API")
 
 # CORS សម្រាប់អនុញ្ញាតឱ្យ Frontend (React Vite) ភ្ជាប់មក
 # - Dev localhost តែងតែអនុញ្ញាតដោយស្វ័យប្រវត្តិ
-# - នៅលើ Render ដាក់ CORS_ORIGINS ក្នុង Environment (ញែកដោយសញ្ញាក្បៀស)
-#   ឧ. https://your-shop.vercel.app,https://your-admin.vercel.app
+# - Production frontends (Vercel) ត្រូវបានបញ្ចូលដោយផ្ទាល់នៅទីនេះ
+# - អាចបន្ថែម Origin បន្ថែមទៀតតាមរយៈ CORS_ORIGINS ក្នុង Environment (ញែកដោយសញ្ញាក្បៀស)
 _DEV_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
@@ -23,9 +23,13 @@ _DEV_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
 ]
+_PRODUCTION_ORIGINS = [
+    "https://frontend-user-e-online.vercel.app",
+    "https://frontend-admin-e-online.vercel.app",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[*_DEV_ORIGINS, *app_settings.cors_origins_list],
+    allow_origins=[*_DEV_ORIGINS, *_PRODUCTION_ORIGINS, *app_settings.cors_origins_list],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
