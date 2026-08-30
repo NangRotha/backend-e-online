@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .database import init_db
 from .config import settings as app_settings
-from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts
+from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts, payments
 from .storage import ensure_upload_dir
 
 # បង្កើតតារាងទាំងអស់ក្នុង PostgreSQL ប្រសិនបើមិនទាន់មាន (រួមទាំង Migration)
@@ -58,6 +58,7 @@ app.include_router(slides.router)
 app.include_router(users.router)
 app.include_router(chat.router)
 app.include_router(alerts.router)
+app.include_router(payments.router)
 
 @app.get("/")
 def read_root():

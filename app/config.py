@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
 
+    # ABA Pay / KHQRcc — សម្រាប់ឲ្យអតិថិជនបង់ប្រាក់តាម QR Code (Scan & Pay)
+    # យកពី https://khqr.cc Dashboard -> ABA Pay Gateway -> API Keys
+    KHQRCC_PROFILE_ID: str = ""
+    KHQRCC_SECRET_KEY: str = ""
+    # URL របស់ Storefront (សម្រាប់ success_url ពេលអតិថិជនបង់ប្រាក់ចប់)
+    FRONTEND_URL: str = "https://frontend-user-e-online.vercel.app"
+
     @property
     def active_database_url(self) -> str:
         """ជ្រើសរើស Database URL ត្រឹមត្រូវតាមបរិស្ថានដំណើរការ។

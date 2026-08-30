@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
+from .payments import create_order_payment
 import uuid
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
@@ -16,7 +17,7 @@ def _effective_price(product: models.Product) -> float:
     return product.price
 
 @router.post("/checkout", response_model=schemas.CheckoutResponse)
-def checkout(
+async def checkout(
     order: schemas.CheckoutRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),  # យក User ID ពី JWT
@@ -82,13 +83,38 @@ def checkout(
         product.stock -= qty
     db.commit()
 
-    # បង្កើត URL សម្រាប់ Payment (នៅទីនេះប្រើ Mock URL)
-    payment_ref = str(uuid.uuid4())
-    payment_url = f"https://pay.example.com/checkout/{payment_ref}"
+    # បង្កើត ABA Pay / KHQRcc Payment (QR Code) ដោយស្វ័យប្រវត្តិ
+    payment = await create_order_payment(
+        order_id=new_order.id,
+        amount=total,
+        remark=f"Order #{new_order.id}",
+    )
+    if payment:
+        new_order.payment_ref = payment["transaction_id"]
+        db.commit()
+
+    # Redirect Checkout URL (ABA Pay Managed Checkout) — ប្រើជាជម្រើស
+    payment_url = payment["url"] if payment else f"https://pay.example.com/checkout/{uuid.uuid4()}"
 
     return {
         "order_id": new_order.id,
         "total_amount": total,
         "status": "pending",
-        "payment_url": payment_url
+        "payment_url": payment_url,
+        "payment_enabled": payment is not None,
+        "payment_transaction_id": payment["transaction_id"] if payment else None,
+        "payment_qr_url": payment["qr_url"] if payment else None,
+        "payment_qr": payment["qr"] if payment else None,
+    }
+
+@router.get("/{order_id}/status")
+def order_status(order_id: int, db: Session = Depends(get_db)):
+    """ពិនិត្យស្ថានភាព Order តាមលេខសម្គាល់ (សម្រាប់ទំព័រ Order Success)"""
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {
+        "order_id": order.id,
+        "status": order.status,
+        "total_amount": order.total_amount,
     }

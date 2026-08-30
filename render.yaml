@@ -62,6 +62,13 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      # ABA Pay / KHQRcc — Scan & Pay QR
+      - key: KHQRCC_PROFILE_ID
+        sync: false
+      - key: KHQRCC_SECRET_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
       # ថតរក្សារូបភាព (បើប្រើ Persistent Disk -> UPLOAD_DIR=/var/data/uploads)
       - key: UPLOAD_DIR
         sync: false

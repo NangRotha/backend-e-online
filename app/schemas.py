@@ -122,7 +122,31 @@ class CheckoutResponse(BaseModel):
     order_id: int
     total_amount: float
     status: str
-    payment_url: str  # សម្រាប់អ្នកប្រើប្រាស់ចុចបង់ប្រាក់
+    payment_url: str = ""  # Redirect checkout (ABA Pay) — ប្រើបានបើ payment_enabled
+    payment_enabled: bool = False  # បានភ្ជាប់ ABA Pay / KHQRcc ឬអត់
+    payment_transaction_id: Optional[str] = None  # Transaction ID សម្រាប់ពិនិត្យស្ថានភាព
+    payment_qr_url: Optional[str] = None  # រូប QR Code (PNG)
+    payment_qr: Optional[str] = None  # ខ្សែអក្សរ EMV (បើចង់ Render QR ដោយខ្លួនឯង)
+
+class PaymentCreateRequest(BaseModel):
+    transaction_id: str
+    amount: float
+    success_url: str
+    remark: str = ""
+
+class PaymentCreateResponse(BaseModel):
+    transaction_id: str
+    amount: str
+    qr: str = ""
+    qr_url: str = ""
+
+class PaymentStatusRequest(BaseModel):
+    transaction_id: str
+
+class PaymentStatusResponse(BaseModel):
+    transaction_id: str
+    status: str  # 'pending' | 'success' | 'failed'
+    amount: Optional[str] = None
 
 class DiscountCreate(BaseModel):
     code: str

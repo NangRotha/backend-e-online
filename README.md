@@ -86,6 +86,25 @@ CLOUDINARY_API_SECRET=your-api-secret
 
 ---
 
+### ABA Pay / KHQRcc — Scan & Pay QR
+
+អតិថិជនបង់ប្រាក់តាម **QR Code** (ABA Mobile / Bakong) ហើយ Order
+ប្តូរទៅ **paid** ដោយស្វ័យប្រវត្តិ (auto-detection)។
+
+```bash
+KHQRCC_PROFILE_ID=your-profile-id
+KHQRCC_SECRET_KEY=your-secret-key
+FRONTEND_URL=https://your-shop.vercel.app
+```
+
+- **Checkout** → ហៅ `khqr.cc` QR API ដោយស្វ័យប្រវត្តិ យក QR Code បង្ហាញលើទំព័រ Order Success
+- **Auto-payment** → Frontend poll `/api/payments/status` រៀងរាល់ 3 វិនាទី;
+  ពេលឃើញ `success` -> ហៅ `/api/payments/confirm` -> Order = **paid**
+- **Webhook** → `POST /api/payments/callback` (ស្វ័យប្រវត្តិ ពី khqr.cc) ពិនិត្យ hash ហើយ mark paid
+- បើអត់កំណត់ Secret Key -> Checkout នៅតែដំណើរការ (mock URL) ដូចពីមុន
+
+យក Profile ID / Secret Key ពី https://khqr.cc Dashboard → **ABA Pay Gateway → API Keys**
+
 ## អភិវឌ្ឍន៍លើ Local
 
 ```bash
