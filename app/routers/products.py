@@ -11,7 +11,10 @@ from ..ws_manager import broadcast_products_changed
 router = APIRouter(prefix="/api", tags=["Products"])
 
 def _normalize_images(data: dict) -> dict:
-    """បញ្ជាក់រូបភាព៖ images ជាបញ្ជី URL (រូបទី១ = Main) ហើយ image_url = រូបទី១"""
+    """បញ្ជាក់រូបភាព៖ images ជាបញ្ជី URL (រូបទី១ = Main) ហើយ image_url = រូបទី១
+    ប្រសិនបើ client មិនបានផ្ញើ images/image_url (ឧ. កែតម្លៃតែប៉ុណ្ណោះ) ទុករូបភាពដដែល។"""
+    if "images" not in data and "image_url" not in data:
+        return data
     images = data.get("images") or []
     if not images and data.get("image_url"):
         images = [data["image_url"]]
@@ -66,11 +69,11 @@ def create_product(
     background_tasks.add_task(broadcast_products_changed)
     return new_product
 
-# Admin: កែប្រែផលិតផល
+# Admin: កែប្រែផលិតផល (partial update — អាចផ្ញើតែ price ឬតែ stock ក៏បាន)
 @router.put("/admin/products/{product_id}", response_model=schemas.ProductOut)
 def update_product(
     product_id: int,
-    product: schemas.ProductCreate,
+    product: schemas.ProductUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: models.User = Depends(get_current_admin),
@@ -78,7 +81,7 @@ def update_product(
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
-    data = _normalize_images(product.dict())
+    data = _normalize_images(product.dict(exclude_unset=True))
     # លុបរូបភាពដែលលែងប្រើពី Cloudinary / Local Disk (Update)
     old_urls = set(filter(None, [db_product.image_url or ""] + list(db_product.images or [])))
     new_urls = set(filter(None, data.get("images") or []))

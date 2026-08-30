@@ -102,6 +102,19 @@ class ProductCreate(BaseModel):
     is_on_sale: bool = False
     sale_percent: float = 0
 
+class ProductUpdate(BaseModel):
+    """អនុញ្ញាតកែតម្រូវដោយផ្នែក (partial) — ឧ. កែតម្លៃតែប៉ុណ្ណោះ។
+    មានតែ Field ដែលផ្ញើមកប៉ុណ្ណោះនឹងត្រូវបានធ្វើបច្ចុប្បន្នភាព។"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    stock: Optional[int] = None
+    image_url: Optional[str] = None
+    images: Optional[List[str]] = None
+    category: Optional[str] = None
+    is_on_sale: Optional[bool] = None
+    sale_percent: Optional[float] = None
+
 class ProductOut(ProductCreate):
     id: int
     class Config:
