@@ -74,17 +74,25 @@ def save_upload(content: bytes, filename: str, folder: str = "ecommerce") -> dic
             pass
 
     ext = Path(filename).suffix.lower()
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     unique_name = f"{uuid.uuid4().hex}{ext}"
-    dest = UPLOAD_DIR / unique_name
-    with open(dest, "wb") as fh:
-        fh.write(content)
     media_type = "video" if ext in ALLOWED_VIDEO_EXTENSIONS else "image"
-    return {
-        "url": f"/uploads/{unique_name}",
-        "filename": unique_name,
-        "media_type": media_type,
-    }
+    # ព្យាយាមរក directory ដែលអាចសរសេរបាន
+    # (បើ UPLOAD_DIR កំណត់ខុស / គ្មាន Persistent Disk -> ត្រឡប់ទៅ backend/uploads/)
+    for d in (UPLOAD_DIR, DEFAULT_UPLOAD_DIR):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            dest = d / unique_name
+            with open(dest, "wb") as fh:
+                fh.write(content)
+            return {
+                "url": f"/uploads/{unique_name}",
+                "filename": unique_name,
+                "media_type": media_type,
+            }
+        except Exception:
+            continue
+    # គ្មាន directory ណាមួយអាចសរសេរបាន -> បញ្ជូន URL ទទេ (មិន crash)
+    return {"url": "", "filename": "", "media_type": media_type}
 
 
 def _cloudinary_url_parts(url: str):
@@ -124,11 +132,12 @@ def delete_upload_by_url(url: str) -> bool:
 
     # Local disk (/uploads/...)
     if url.startswith("/uploads/"):
-        try:
-            (UPLOAD_DIR / Path(url).name).unlink(missing_ok=True)
-            return True
-        except Exception:
-            return False
+        for d in (UPLOAD_DIR, DEFAULT_UPLOAD_DIR):
+            try:
+                (d / Path(url).name).unlink(missing_ok=True)
+            except Exception:
+                continue
+        return True
 
     # URL ខាងក្រៅ -> កុំលុប
     return False
@@ -145,7 +154,15 @@ def delete_uploads_by_urls(urls) -> None:
 
 
 def ensure_upload_dir() -> Path:
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    """រក directory ដែលអាចបង្កើត/សរសេរបាន៖
+    ប្រើ UPLOAD_DIR បើអាច បើអត់ -> ត្រឡប់ទៅ DEFAULT_UPLOAD_DIR (backend/uploads/)។
+    (កុំឱ្យ App crash ពេល UPLOAD_DIR កំណត់ខុស / គ្មាន Persistent Disk)"""
+    for d in (UPLOAD_DIR, DEFAULT_UPLOAD_DIR):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+        except Exception:
+            continue
     return UPLOAD_DIR
 
 

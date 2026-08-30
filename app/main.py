@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from .database import init_db
 from .config import settings as app_settings
 from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts
-from .storage import UPLOAD_DIR
+from .storage import ensure_upload_dir
 
 # បង្កើតតារាងទាំងអស់ក្នុង PostgreSQL ប្រសិនបើមិនទាន់មាន (រួមទាំង Migration)
 init_db()
@@ -35,9 +35,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# បម្រើរូបភាពដែល Upload ពីកុំព្យូទ័រ (backend/uploads/ ឬ UPLOAD_DIR ពី Environment)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# បម្រើរូបភាពដែល Upload ពីកុំព្យូទ័រ (/uploads/...)
+# ប្រើ directory ដែលអាចសរសេរបាន (UPLOAD_DIR បើអាច បើអត់ -> backend/uploads/)
+# check_dir=False -> កុំ crash បើ directory នៅមិនទាន់មាន
+_EFFECTIVE_UPLOAD_DIR = ensure_upload_dir()
+app.mount(
+    "/uploads",
+    StaticFiles(directory=_EFFECTIVE_UPLOAD_DIR, check_dir=False),
+    name="uploads",
+)
 
 # ចុះឈ្មោះ Routers
 app.include_router(auth.router)
