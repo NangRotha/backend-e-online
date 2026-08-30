@@ -11,3 +11,4 @@ python-multipart==0.0.9
 httpx>=0.28.1,<1
 email-validator>=2.3.0,<3
 cloudinary>=1.40.0
+sqids>=0.4,<1

@@ -31,6 +31,7 @@ Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដ�
 | `SMTP_USE_SSL`        | `False` (587) ឬ `True` (465)                  |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` | ពី @BotFather              |
 | `DEEPSEEK_API_KEY`    | ពី https://platform.deepseek.com              |
+| `UPLOADTHING_TOKEN`   | ពី https://uploadthing.com/dashboard → API Keys |
 | `UPLOAD_DIR`          | ទុកទទេ ឬ `/var/data/uploads` (បើមាន Disk)  |
 
 > **RENDER** ត្រូវបាន Render កំណត់ដោយស្វ័យប្រវត្តិ (`RENDER=true`) —
@@ -66,9 +67,26 @@ Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដ�
   2. Service → **Disks** → បង្កើត Disk (mount នៅ `/var/data/uploads`)
   3. ដាក់ Env Var `UPLOAD_DIR=/var/data/uploads`
 
-### Cloudinary (ណែនាំ) — រក្សាទុករូបភាព/វីដេអូ អចិន្ត្រៃយ៍
+### UploadThing (ណែនាំបំផុត) — ផ្ទុករូបភាព/វីដេអូ លើ CDN អចិន្ត្រៃយ៍
 
-កូដនេះប្រើ **Cloudinary** ដោយស្វ័យប្រវត្តិ បើបានកំណត់ credentials នេះ៖
+កូដនេះប្រើ **UploadThing** ដោយស្វ័យប្រវត្តិ បើបានកំណត់ Token៖
+
+```bash
+UPLOADTHING_TOKEN=eyJhcGlLZXkiOiJza19saXZlX2...
+```
+
+- **Create**: Upload → UploadThing CDN (URL អចិន្ត្រៃយ៍ `*.ufs.sh/f/...` / `utfs.io/f/...`)
+- **Read**: Frontend បង្ហាញ URL ផ្ទាល់ពី CDN
+- **Update**: លុបរូបចាស់ចេញពី UploadThing ពេលប្តូរទៅរូបថ្មី
+- **Delete**: លុបរូបចេញពី UploadThing ពេលលុប Product / Slide / Alert / Profile
+- បើអត់កំណត់ UploadThing -> បន្តប្រើ Cloudinary (បើកំណត់) -> Local Disk
+
+យក Token ពី UploadThing Dashboard → **API Keys** (ប៊ូតុង Copy)។
+ចំណាំ៖ UploadThing Free plan កំណត់ឯកសារ **4MB / សន្លឹក**។
+
+### Cloudinary — ជម្រើសទី 2 សម្រាប់រក្សាទុករូបភាព/វីដេអូ អចិន្ត្រៃយ៍
+
+កូដនេះប្រើ **Cloudinary** ដោយស្វ័យប្រវត្តិ បើមិនបានកំណត់ UploadThing តែបានកំណត់ credentials នេះ៖
 
 ```bash
 CLOUDINARY_CLOUD_NAME=your-cloud-name

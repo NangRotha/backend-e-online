@@ -62,6 +62,9 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      # UploadThing — ផ្ទុករូបភាព/វីដេអូ Upload លើ CDN អចិន្ត្រៃយ៍
+      - key: UPLOADTHING_TOKEN
+        sync: false
       # ABA Pay / KHQRcc — Scan & Pay QR
       - key: KHQRCC_PROFILE_ID
         sync: false

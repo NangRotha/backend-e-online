@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
 
+    # UploadThing — ផ្ទុករូបភាព/វីដេអូ Upload លើ CDN អចិន្ត្រៃយ៍
+    # (ពេញចិត្តបំផុត — យក Token ពី https://uploadthing.com/dashboard -> API Keys)
+    UPLOADTHING_TOKEN: str = ""
+
     # ABA Pay / KHQRcc — សម្រាប់ឲ្យអតិថិជនបង់ប្រាក់តាម QR Code (Scan & Pay)
     # យកពី https://khqr.cc Dashboard -> ABA Pay Gateway -> API Keys
     KHQRCC_PROFILE_ID: str = ""
