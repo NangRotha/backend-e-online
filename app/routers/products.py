@@ -2,11 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Backgro
 from sqlalchemy.orm import Session
 from typing import List
 from pathlib import Path
-import uuid
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
-from ..storage import UPLOAD_DIR, ALLOWED_EXTENSIONS
+from ..storage import ALLOWED_EXTENSIONS, save_upload
 from ..ws_manager import broadcast_products_changed
 
 router = APIRouter(prefix="/api", tags=["Products"])
@@ -20,7 +19,7 @@ def _normalize_images(data: dict) -> dict:
     data["image_url"] = images[0] if images else (data.get("image_url") or "")
     return data
 
-# Admin: Upload រូបភាពពីកុំព្យូទ័រ (Main / Supporting images)
+# Admin: Upload រូបភាពពីកុំព្យូទ័រ (Main / Supporting images) — Cloudinary (បើកំណត់)
 @router.post("/admin/upload")
 async def upload_image(
     file: UploadFile = File(...),
@@ -34,14 +33,8 @@ async def upload_image(
             detail=f"Unsupported file type '{ext or 'none'}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    unique_name = f"{uuid.uuid4().hex}{ext}"
-    dest = UPLOAD_DIR / unique_name
     content = await file.read()
-    with open(dest, "wb") as fh:
-        fh.write(content)
-
-    return {"url": f"/uploads/{unique_name}", "filename": unique_name}
+    return save_upload(content, filename, folder="products")
 
 # បង្ហាញផលិតផលទាំងអស់ (សម្រាប់ User)
 @router.get("/products", response_model=List[schemas.ProductOut])

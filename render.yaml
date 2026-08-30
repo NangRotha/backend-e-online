@@ -55,6 +55,13 @@ services:
         sync: false
       - key: DEEPSEEK_API_KEY
         sync: false
+      # Cloudinary — រក្សាទុករូបភាព/វីដេអូ Upload ឱ្យមានស្ថេរភាព
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       # ថតរក្សារូបភាព (បើប្រើ Persistent Disk -> UPLOAD_DIR=/var/data/uploads)
       - key: UPLOAD_DIR
         sync: false

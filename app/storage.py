@@ -1,9 +1,21 @@
 from pathlib import Path
+import io
 import os
+import uuid
+from .config import settings
 
-# ថតរក្សាទុករូបភាពដែល Upload ពីកុំព្យូទ័រ (backend/uploads/)
+# Cloudinary SDK (optional — បើអត់មាន SDK នឹងប្រើ Local Disk វិញ)
+try:
+    import cloudinary
+    import cloudinary.uploader
+
+    _HAS_CLOUDINARY = True
+except ImportError:
+    cloudinary = None
+    _HAS_CLOUDINARY = False
+
+# ថតរក្សាទុករូបភាពដែល Upload ពីកុំព្យូទ័រ (backend/uploads/) — ប្រើតែពេលអត់ Cloudinary
 # អាចប្តូរទីតាំងតាម Environment Variable `UPLOAD_DIR`
-# (ឧ. នៅលើ Render អាច mount Persistent Disk ហើយដាក់ UPLOAD_DIR=/var/data/uploads)
 DEFAULT_UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", str(DEFAULT_UPLOAD_DIR)))
 
@@ -15,6 +27,66 @@ ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".ogg", ".m4v"}
 # រួមគ្នា (រូប + វីដេអូ)
 ALLOWED_MEDIA_EXTENSIONS = ALLOWED_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
 
+
+def cloudinary_configured() -> bool:
+    """ពិនិត្យថាបានកំណត់ Cloudinary credentials ពេញលេញឬអត់"""
+    return bool(
+        _HAS_CLOUDINARY
+        and settings.CLOUDINARY_CLOUD_NAME
+        and settings.CLOUDINARY_API_KEY
+        and settings.CLOUDINARY_API_SECRET
+    )
+
+
+def _get_cloudinary():
+    cloudinary.config(
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+        api_key=settings.CLOUDINARY_API_KEY,
+        api_secret=settings.CLOUDINARY_API_SECRET,
+        secure=True,
+    )
+    return cloudinary
+
+
+def save_upload(content: bytes, filename: str, folder: str = "ecommerce") -> dict:
+    """រក្សាទុកឯកសារដែល Upload ពីកុំព្យូទ័រ៖
+    - បើកំណត់ Cloudinary -> ផ្ទុកទៅ Cloudinary (URL អចិន្ត្រៃយ៍ មិនបាត់ពេល Redeploy)
+    - បើអត់ -> រក្សាទុកលើ Local Disk (backend/uploads/) ដូចពីមុន
+    Returns: {"url", "filename", "media_type"} — media_type = 'image' | 'video'
+    """
+    if cloudinary_configured():
+        try:
+            result = _get_cloudinary().uploader.upload(
+                io.BytesIO(content),
+                folder=folder,
+                public_id=uuid.uuid4().hex,
+                resource_type="auto",  # ស្គាល់រូប / វីដេអូ ដោយស្វ័យប្រវត្តិ
+                overwrite=True,
+            )
+            return {
+                "url": result.get("secure_url") or result.get("url", ""),
+                "filename": result.get("public_id", ""),
+                "media_type": result.get("resource_type", "image"),
+            }
+        except Exception:
+            # បើ Cloudinary បរាជ័យ (គ្មាន internet / key ខុស) -> ត្រឡប់ទៅ Local Disk វិញ
+            pass
+
+    ext = Path(filename).suffix.lower()
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / unique_name
+    with open(dest, "wb") as fh:
+        fh.write(content)
+    media_type = "video" if ext in ALLOWED_VIDEO_EXTENSIONS else "image"
+    return {
+        "url": f"/uploads/{unique_name}",
+        "filename": unique_name,
+        "media_type": media_type,
+    }
+
+
 def ensure_upload_dir() -> Path:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     return UPLOAD_DIR
+

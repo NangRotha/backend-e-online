@@ -2,13 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFi
 from sqlalchemy.orm import Session
 from pathlib import Path
 from typing import List
-import uuid
 from datetime import datetime, timezone
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
 from ..ws_manager import broadcast_alerts_changed
-from ..storage import UPLOAD_DIR, ALLOWED_EXTENSIONS
+from ..storage import ALLOWED_EXTENSIONS, save_upload
 
 router = APIRouter(prefix="/api", tags=["Alerts"])
 
@@ -87,14 +86,8 @@ async def upload_alert_image(
             ),
         )
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    unique_name = f"{uuid.uuid4().hex}{ext}"
-    dest = UPLOAD_DIR / unique_name
     content = await file.read()
-    with open(dest, "wb") as fh:
-        fh.write(content)
-
-    return {"url": f"/uploads/{unique_name}", "filename": unique_name}
+    return save_upload(content, filename, folder="alerts")
 
 # ==========================================
 # Admin: បង្កើត Alert ថ្មី

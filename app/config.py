@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     # យក API Key ពី https://platform.deepseek.com
     DEEPSEEK_API_KEY: str = ""
 
+    # Cloudinary — រក្សាទុករូបភាព/វីដេអូ Upload ឱ្យមានស្ថេរភាព
+    # (Render free/standard disk មិន persistent — រូបនឹងបាត់ពេល Redeploy បើអត់ប្រើ Cloudinary)
+    # យកពី Cloudinary Dashboard -> Settings -> API Keys
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
     @property
     def active_database_url(self) -> str:
         """ជ្រើសរើស Database URL ត្រឹមត្រូវតាមបរិស្ថានដំណើរការ។

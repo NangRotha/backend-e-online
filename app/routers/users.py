@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pathlib import Path
-import uuid
 from .. import models, schemas, auth
 from ..database import get_db
 from ..deps import get_current_user
-from ..storage import UPLOAD_DIR, ALLOWED_EXTENSIONS
+from ..storage import ALLOWED_EXTENSIONS, save_upload
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -72,17 +71,15 @@ async def upload_profile_image(
             detail=f"Unsupported file type '{ext or 'none'}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    unique_name = f"{uuid.uuid4().hex}{ext}"
     content = await file.read()
-    with open(UPLOAD_DIR / unique_name, "wb") as fh:
-        fh.write(content)
+    # Cloudinary (បើកំណត់) — បើអត់ រក្សាទុកលើ Local Disk ដូចពីមុន
+    result = save_upload(content, filename, folder="profile")
 
     # រក្សាទុក URL និងបញ្ជូន Profile ថ្មីមកវិញ
-    current_user.profile_image = f"/uploads/{unique_name}"
+    current_user.profile_image = result["url"]
     db.commit()
     db.refresh(current_user)
     return {
-        "url": f"/uploads/{unique_name}",
+        "url": result["url"],
         "user": schemas.UserOut.model_validate(current_user).model_dump(),
     }
