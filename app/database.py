@@ -1,21 +1,28 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from .config import settings
+import time
 
 # យក Database URL ពី Environment Variables (បង្កើតក្នុង .env ឬ Render Dashboard)
 DATABASE_URL = settings.active_database_url
 
 # បង្កើត engine សម្រាប់ភ្ជាប់ទៅ PostgreSQL (Render)
+# connect_timeout: កុំឱ្យជាប់រង់ចាំយូរពេល DNS / បណ្តាញធ្លាក់
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"sslmode": "require"},  # Render PostgreSQL តម្រូវឱ្យប្រើ SSL
-    pool_pre_ping=True
+    connect_args={"sslmode": "require", "connect_timeout": 10},
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-def init_db():
+# ព្យាយាមភ្ជាប់ឡើងវិញពេល DNS / បណ្តាញធ្លាក់មួយភ្លែត
+DB_MAX_ATTEMPTS = 10
+DB_RETRY_DELAY_SECONDS = 3
+
+
+def _init_db_once():
     """បង្កើតតារាងទាំងអស់ និងធ្វើ Migration បើចាំបាច់ (idempotent)"""
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
@@ -83,6 +90,41 @@ def init_db():
             "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS image_url VARCHAR DEFAULT ''"
         ))
         conn.commit()
+
+
+def init_db():
+    """បង្កើតតារាង + Migration ជាមួយការព្យាយាមភ្ជាប់ឡើងវិញ
+    (ដោះស្រាយបញ្ហា DNS / បណ្តាញធ្លាក់មួយភ្លែត ដែលបណ្តាលឱ្យ
+    'could not translate host name')"""
+    last_exc = None
+    for attempt in range(1, DB_MAX_ATTEMPTS + 1):
+        try:
+            _init_db_once()
+            return
+        except Exception as e:
+            last_exc = e
+            print(
+                f"⚠️  Database connection failed (attempt {attempt}/{DB_MAX_ATTEMPTS}): "
+                f"{type(e).__name__}: {e}"
+            )
+            if attempt < DB_MAX_ATTEMPTS:
+                print(
+                    f"    Retrying in {DB_RETRY_DELAY_SECONDS}s... "
+                    f"(កំពុងព្យាយាមភ្ជាប់ Database ឡើងវិញ)"
+                )
+                time.sleep(DB_RETRY_DELAY_SECONDS)
+
+    raise RuntimeError(
+        "Could not connect to the database after "
+        f"{DB_MAX_ATTEMPTS} attempts.\n"
+        "Possible causes:\n"
+        "  1. No internet / DNS is down — check your connection.\n"
+        "  2. The database host is unreachable — run:\n"
+        "     nc -vz dpg-da8q4obtqb8s73evcl20-a.singapore-postgres.render.com 5432\n"
+        "  3. Wrong DATABASE_URL in backend/.env\n"
+        f"Last error: {last_exc}"
+    ) from last_exc
+
 
 def get_db():
     db = SessionLocal()
