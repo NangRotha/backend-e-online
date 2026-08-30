@@ -1,6 +1,7 @@
 from pathlib import Path
 import io
 import os
+import re
 import uuid
 from .config import settings
 
@@ -86,7 +87,65 @@ def save_upload(content: bytes, filename: str, folder: str = "ecommerce") -> dic
     }
 
 
+def _cloudinary_url_parts(url: str):
+    """ញែក Cloudinary URL យក public_id + resource_type (សម្រាប់លុប)"""
+    # ឧទាហរណ៍៖ https://res.cloudinary.com/<cloud>/image/upload/v123456/folder/pub.png
+    m = re.match(
+        r"https?://res\.cloudinary\.com/[^/]+/([^/]+)/upload/(?:v\d+/)?(.+)",
+        url,
+    )
+    if not m:
+        return None, None
+    resource_type, tail = m.group(1), m.group(2)
+    public_id = tail.rsplit(".", 1)[0]  # កាត់ extension
+    return resource_type, public_id
+
+
+def delete_upload_by_url(url: str) -> bool:
+    """លុបឯកសារ (Delete) តាម URL៖ Cloudinary ឬ Local Disk។
+    URL ខាងក្រៅ (picsum, pinimg...) មិនត្រូវបានលុបទេ។"""
+    if not url:
+        return False
+
+    # Cloudinary
+    if "res.cloudinary.com" in url:
+        if not cloudinary_configured():
+            return False
+        resource_type, public_id = _cloudinary_url_parts(url)
+        if not public_id:
+            return False
+        try:
+            _get_cloudinary().uploader.destroy(
+                public_id, resource_type=resource_type or "image"
+            )
+            return True
+        except Exception:
+            return False
+
+    # Local disk (/uploads/...)
+    if url.startswith("/uploads/"):
+        try:
+            (UPLOAD_DIR / Path(url).name).unlink(missing_ok=True)
+            return True
+        except Exception:
+            return False
+
+    # URL ខាងក្រៅ -> កុំលុប
+    return False
+
+
+def delete_uploads_by_urls(urls) -> None:
+    """លុបឯកសារច្រើន (យក URL ដដែលៗចេញដើម្បីកុំលុបពីរដង)"""
+    seen = set()
+    for u in urls or []:
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        delete_upload_by_url(u)
+
+
 def ensure_upload_dir() -> Path:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     return UPLOAD_DIR
+
 

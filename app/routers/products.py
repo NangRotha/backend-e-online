@@ -5,7 +5,7 @@ from pathlib import Path
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
-from ..storage import ALLOWED_EXTENSIONS, save_upload
+from ..storage import ALLOWED_EXTENSIONS, save_upload, delete_uploads_by_urls
 from ..ws_manager import broadcast_products_changed
 
 router = APIRouter(prefix="/api", tags=["Products"])
@@ -79,6 +79,10 @@ def update_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
     data = _normalize_images(product.dict())
+    # លុបរូបភាពដែលលែងប្រើពី Cloudinary / Local Disk (Update)
+    old_urls = set(filter(None, [db_product.image_url or ""] + list(db_product.images or [])))
+    new_urls = set(filter(None, data.get("images") or []))
+    delete_uploads_by_urls(old_urls - new_urls)
     for key, value in data.items():
         setattr(db_product, key, value)
     db.commit()
@@ -98,6 +102,9 @@ def delete_product(
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
+    # លុបរូបភាពទាំងអស់ពី Cloudinary / Local Disk ផង (Delete)
+    urls = [db_product.image_url or ""] + list(db_product.images or [])
+    delete_uploads_by_urls(urls)
     db.delete(db_product)
     db.commit()
     # ជូនដំណឹង frontend-user ដើម្បីធ្វើបច្ចុប្បន្នភាពដោយស្វ័យប្រវត្តិ

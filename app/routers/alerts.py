@@ -7,7 +7,7 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
 from ..ws_manager import broadcast_alerts_changed
-from ..storage import ALLOWED_EXTENSIONS, save_upload
+from ..storage import ALLOWED_EXTENSIONS, save_upload, delete_upload_by_url
 
 router = APIRouter(prefix="/api", tags=["Alerts"])
 
@@ -122,10 +122,14 @@ def update_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     _validate(payload)
+    old_image = alert.image_url or ""
     for key, value in payload.dict().items():
         setattr(alert, key, value)
     db.commit()
     db.refresh(alert)
+    # លុបរូបភាពចាស់ពី Cloudinary / Local Disk ពេលប្តូរទៅរូបថ្មី (Update)
+    if old_image and old_image != (alert.image_url or ""):
+        delete_upload_by_url(old_image)
     _broadcast(background_tasks)
     return alert
 
@@ -142,6 +146,8 @@ def delete_alert(
     alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
+    # លុបរូបភាពពី Cloudinary / Local Disk ផង (Delete)
+    delete_upload_by_url(alert.image_url or "")
     db.delete(alert)
     db.commit()
     _broadcast(background_tasks)

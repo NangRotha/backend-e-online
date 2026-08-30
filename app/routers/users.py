@@ -4,7 +4,7 @@ from pathlib import Path
 from .. import models, schemas, auth
 from ..database import get_db
 from ..deps import get_current_user
-from ..storage import ALLOWED_EXTENSIONS, save_upload
+from ..storage import ALLOWED_EXTENSIONS, save_upload, delete_upload_by_url
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -73,12 +73,16 @@ async def upload_profile_image(
 
     content = await file.read()
     # Cloudinary (បើកំណត់) — បើអត់ រក្សាទុកលើ Local Disk ដូចពីមុន
+    old_image = current_user.profile_image or ""
     result = save_upload(content, filename, folder="profile")
 
     # រក្សាទុក URL និងបញ្ជូន Profile ថ្មីមកវិញ
     current_user.profile_image = result["url"]
     db.commit()
     db.refresh(current_user)
+    # លុបរូប Profile ចាស់ពី Cloudinary / Local Disk (Update)
+    if old_image and old_image != result["url"]:
+        delete_upload_by_url(old_image)
     return {
         "url": result["url"],
         "user": schemas.UserOut.model_validate(current_user).model_dump(),

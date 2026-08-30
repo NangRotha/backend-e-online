@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
+from ..storage import delete_upload_by_url
 from ..ws_manager import manager
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
@@ -17,6 +18,10 @@ def update_setting(
 ):
     db_setting = db.query(models.SiteSetting).filter(models.SiteSetting.key == setting.key).first()
     if db_setting:
+        old_value = db_setting.value
+        # លុប Logo ចាស់ពី Cloudinary / Local Disk ពេលប្តូរទៅ Logo ថ្មី
+        if setting.key == "site_logo" and old_value and old_value != setting.value:
+            delete_upload_by_url(old_value)
         db_setting.value = setting.value
     else:
         new_setting = models.SiteSetting(key=setting.key, value=setting.value)

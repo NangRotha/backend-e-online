@@ -66,6 +66,24 @@ Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដ�
   2. Service → **Disks** → បង្កើត Disk (mount នៅ `/var/data/uploads`)
   3. ដាក់ Env Var `UPLOAD_DIR=/var/data/uploads`
 
+### Cloudinary (ណែនាំ) — រក្សាទុករូបភាព/វីដេអូ អចិន្ត្រៃយ៍
+
+កូដនេះប្រើ **Cloudinary** ដោយស្វ័យប្រវត្តិ បើបានកំណត់ credentials នេះ៖
+
+```bash
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+```
+
+- **Create**: Upload → Cloudinary (URL អចិន្ត្រៃយ៍ `res.cloudinary.com/...`)
+- **Read**: Frontend បង្ហាញ URL ផ្ទាល់ពី Cloudinary
+- **Update**: លុបរូបចាស់ចេញពី Cloudinary ពេលប្តូរទៅរូបថ្មី
+- **Delete**: លុបរូបចេញពី Cloudinary ពេលលុប Product / Slide / Alert / Profile
+- បើអត់កំណត់ Cloudinary -> នឹងប្រើ Local Disk (`backend/uploads/`) ដូចពីមុន
+
+យក Cloud Name / API Key / API Secret ពី Cloudinary Dashboard → **Settings → API Keys**
+
 ---
 
 ## អភិវឌ្ឍន៍លើ Local

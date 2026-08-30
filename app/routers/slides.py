@@ -5,7 +5,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
-from ..storage import ALLOWED_MEDIA_EXTENSIONS, save_upload
+from ..storage import ALLOWED_MEDIA_EXTENSIONS, save_upload, delete_upload_by_url
 from ..ws_manager import manager
 
 router = APIRouter(prefix="/api", tags=["Slides"])
@@ -121,10 +121,14 @@ def update_slide(
     if not slide:
         raise HTTPException(status_code=404, detail="Slide not found")
     _validate(payload)
+    old_media = slide.media_url or ""
     for key, value in payload.dict().items():
         setattr(slide, key, value)
     db.commit()
     db.refresh(slide)
+    # លុប media ចាស់ពី Cloudinary / Local Disk ពេលប្តូរទៅ media ថ្មី (Update)
+    if old_media and old_media != (slide.media_url or ""):
+        delete_upload_by_url(old_media)
     _broadcast_slides_changed(background_tasks)
     return slide
 
@@ -141,6 +145,8 @@ def delete_slide(
     slide = db.query(models.Slide).filter(models.Slide.id == slide_id).first()
     if not slide:
         raise HTTPException(status_code=404, detail="Slide not found")
+    # លុប media ពី Cloudinary / Local Disk ផង (Delete)
+    delete_upload_by_url(slide.media_url or "")
     db.delete(slide)
     db.commit()
     _broadcast_slides_changed(background_tasks)
