@@ -5,6 +5,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
+from ..storage import delete_upload_by_url
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -110,6 +111,40 @@ def update_user_role(
     user.role = payload.role
     db.commit()
     return {"message": "Role updated", "user_id": user.id, "role": user.role}
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(_admin),
+    admin: models.User = Depends(get_current_admin),
+):
+    """Admin: លុបអ្នកប្រើប្រាស់ (Delete User) — រួមទាំង Orders + រូប Profile ផង"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # ការពារកុំឲ្យ Admin លុបខ្លួនឯង (អាចធ្វើឲ្យបាត់សិទ្ធិ Admin)
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+
+    # លុប Orders + Order Items របស់អ្នកប្រើជាមុន (ទាក់ទង Foreign Key)
+    for order in (
+        db.query(models.Order).filter(models.Order.user_id == user.id).all()
+    ):
+        db.query(models.OrderItem).filter(
+            models.OrderItem.order_id == order.id
+        ).delete()
+    db.query(models.Order).filter(models.Order.user_id == user.id).delete()
+
+    # លុប OTP Codes ចាស់ៗរបស់អ្នកប្រើ
+    db.query(models.OtpCode).filter(models.OtpCode.email == user.email).delete()
+
+    # លុបរូប Profile ពី UploadThing / Cloudinary / Local Disk
+    if user.profile_image:
+        delete_upload_by_url(user.profile_image)
+
+    db.delete(user)
+    db.commit()
+    return {"message": "User deleted", "user_id": user.id, "email": user.email}
 
 # ==========================================
 # Orders Management
