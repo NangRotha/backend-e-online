@@ -1,15 +1,19 @@
 import hashlib
 import hmac
+import logging
 import uuid
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional, Dict
 from .. import models, schemas
 from ..database import get_db
 from ..config import settings
+from ..email_sender import smtp_configured, send_order_receipt_email
 
 router = APIRouter(prefix="/api/payments", tags=["ABA Pay (KHQRcc)"])
+
+logger = logging.getLogger("uvicorn.error")
 
 KHQRCC_BASE = "https://khqr.cc"
 
@@ -140,6 +144,7 @@ async def check_status(payload: schemas.PaymentStatusRequest):
 @router.post("/confirm")
 async def confirm_payment(
     payload: schemas.PaymentStatusRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     if not payment_configured():
@@ -170,8 +175,7 @@ async def confirm_payment(
         raise HTTPException(status_code=404, detail="Order not found")
 
     if order.status != "paid":
-        order.status = "paid"
-        db.commit()
+        _mark_paid_and_notify(db, order, background_tasks)
 
     return {
         "order_id": order.id,
@@ -185,7 +189,11 @@ async def confirm_payment(
 # Callback hash = sha256(secret + req_time + transaction_id + amount + "SUCCESS")
 # ============================================================
 @router.post("/callback")
-async def payment_callback(payload: Dict, db: Session = Depends(get_db)):
+async def payment_callback(
+    payload: Dict,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     transaction_id = (
         payload.get("transaction_id")
         or payload.get("order_id")
@@ -207,11 +215,87 @@ async def payment_callback(payload: Dict, db: Session = Depends(get_db)):
             models.Order.payment_ref == transaction_id
         ).first()
         if order and order.status != "paid":
-            order.status = "paid"
-            db.commit()
+            _mark_paid_and_notify(db, order, background_tasks)
 
     # តែងតែបញ្ជូន 200 ដើម្បីកុំឱ្យ Gateway ផ្ញើវិញដដែលៗ
     return {"received": True}
+
+
+# ============================================================
+# Helper: ផ្ញើ Email Receipt ពេលអ្នកប្រើបង់ប្រាក់ជោគជ័យ
+# ============================================================
+def _load_order_receipt_data(db: Session, order: models.Order) -> dict:
+    """ប្រមូលទិន្នន័យ Order សម្រាប់ Email Receipt (ផ្ញើទៅ User Gmail)"""
+    user = db.query(models.User).filter(models.User.id == order.user_id).first()
+    items = (
+        db.query(models.OrderItem)
+        .filter(models.OrderItem.order_id == order.id)
+        .all()
+    )
+    item_rows = []
+    subtotal = 0.0
+    for oi in items:
+        product = (
+            db.query(models.Product)
+            .filter(models.Product.id == oi.product_id)
+            .first()
+        )
+        item_rows.append(
+            {
+                "name": product.name if product else f"Product #{oi.product_id}",
+                "quantity": oi.quantity,
+                "unit_price": oi.price,
+            }
+        )
+        subtotal += (oi.price or 0) * oi.quantity
+    subtotal = round(subtotal, 2)
+    discount = (
+        round(subtotal - order.total_amount, 2) if subtotal > order.total_amount else 0.0
+    )
+    site_map = {s.key: s.value for s in db.query(models.SiteSetting).all()}
+    return {
+        "to_email": user.email if user else None,
+        "data": {
+            "site_name": site_map.get("site_name")
+            or settings.SMTP_FROM_NAME
+            or "Our Store",
+            "site_logo": site_map.get("site_logo") or "",
+            "customer_name": order.customer_name
+            or (user.name if user else "Customer"),
+            "order_id": order.id,
+            "created_at": order.created_at,
+            "items": item_rows,
+            "subtotal": subtotal,
+            "discount": discount,
+            "total": order.total_amount,
+            "phone": order.customer_phone or "",
+            "address": order.shipping_address or "",
+            "note": order.note or "",
+            "frontend_url": settings.FRONTEND_URL,
+        },
+    }
+
+
+def _mark_paid_and_notify(
+    db: Session,
+    order: models.Order,
+    background_tasks: BackgroundTasks,
+) -> bool:
+    """ប្តូរ Order -> paid (តែម្តង) រួចដាក់ Email Receipt ចូល Background Tasks
+    (ផ្ញើបន្ទាប់ពីបញ្ជូន Response ដើម្បីកុំឱ្យអតិថិជនរង់ចាំ SMTP)"""
+    if order.status == "paid":
+        return False
+    order.status = "paid"
+    db.commit()
+    try:
+        info = _load_order_receipt_data(db, order)
+        if info["to_email"] and smtp_configured():
+            background_tasks.add_task(
+                send_order_receipt_email, info["to_email"], info["data"]
+            )
+    except Exception as e:
+        logger.error(f"Failed to queue receipt email for order #{order.id}: {e}")
+    return True
 
 
 # ============================================================
