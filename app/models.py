@@ -56,6 +56,11 @@ class Order(Base):
     status = Column(String, default="pending")  # 'pending', 'paid', 'shipped'
     promo_code = Column(String, nullable=True)
     payment_ref = Column(String, nullable=True)
+    # ព័ត៌មានអ្នកទទួល / ដឹកជញ្ជូន (បញ្ចូលពីទំព័រ Checkout)
+    customer_name = Column(String, nullable=True)   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
+    customer_phone = Column(String, nullable=True)  # លេខទូរសព្ទ
+    shipping_address = Column(String, default="")   # អាសយដ្ឋានដឹកជញ្ជូន
+    note = Column(String, default="")               # កំណត់ចំណាំ (optional)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class OrderItem(Base):

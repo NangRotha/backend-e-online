@@ -132,6 +132,10 @@ def list_orders(db: Session = Depends(_admin)):
             "status": o.status,
             "promo_code": o.promo_code,
             "payment_ref": o.payment_ref,
+            "customer_name": o.customer_name,
+            "customer_phone": o.customer_phone,
+            "shipping_address": o.shipping_address,
+            "note": o.note,
             "created_at": o.created_at,
             "items": [
                 {

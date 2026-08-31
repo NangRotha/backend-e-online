@@ -66,7 +66,12 @@ async def checkout(
         user_id=current_user.id,
         total_amount=total,
         status="pending",
-        promo_code=order.promo_code if discount_applied else None
+        promo_code=order.promo_code if discount_applied else None,
+        # ព័ត៌មានអ្នកទទួល / ដឹកជញ្ជូន — បើអត់បញ្ចូល យកឈ្មោះពី Profile ដោយស្វ័យប្រវត្តិ
+        customer_name=(order.customer_name or "").strip() or current_user.name,
+        customer_phone=(order.customer_phone or "").strip(),
+        shipping_address=order.shipping_address or "",
+        note=order.note or "",
     )
     db.add(new_order)
     db.commit()

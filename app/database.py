@@ -89,6 +89,20 @@ def _init_db_once():
         conn.execute(text(
             "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS image_url VARCHAR DEFAULT ''"
         ))
+        # Migration: បន្ថែម column ព័ត៌មានអ្នកទទួល/ដឹកជញ្ជូន ទៅតារាង orders
+        # (Checkout ឥឡូវផ្ញើឈ្មោះ លេខទូរសព្ទ អាសយដ្ឋាន និងកំណត់ចំណាំ)
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_name VARCHAR"
+        ))
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone VARCHAR"
+        ))
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR DEFAULT ''"
+        ))
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS note VARCHAR DEFAULT ''"
+        ))
         conn.commit()
 
 

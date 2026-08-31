@@ -129,7 +129,10 @@ class CheckoutRequest(BaseModel):
     product_id: Optional[int] = None
     quantity: Optional[int] = None
     promo_code: Optional[str] = None
-    shipping_address: str
+    shipping_address: str = ""
+    customer_name: Optional[str] = None   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
+    customer_phone: Optional[str] = None  # លេខទូរសព្ទ
+    note: Optional[str] = None            # កំណត់ចំណាំ (optional)
 
 class CheckoutResponse(BaseModel):
     order_id: int
