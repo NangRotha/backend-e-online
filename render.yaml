@@ -49,6 +49,9 @@ services:
         sync: false
       - key: SMTP_USE_SSL
         sync: false
+      # Brevo HTTP API — ផ្ញើ Email តាម HTTPS (ដំណើរការលើ Render free tier ព្រោះ port 587 អាចបិទ)
+      - key: BREVO_API_KEY
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_BOT_USERNAME

@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     SMTP_USE_SSL: bool = False  # True = SSL (port 465), False = STARTTLS (port 587)
     OTP_EXPIRE_MINUTES: int = 10
 
+    # Brevo HTTP API — ផ្ញើ OTP/Receipt តាម HTTPS (port 443) ជំនួស SMTP
+    # (សំខាន់លើ Render free tier ព្រោះ port 587/465 អាចគ្មាន network)
+    # យក API Key ពី https://app.brevo.com/settings/keys/api (xkeysib-...)
+    BREVO_API_KEY: str = ""
+
     # Telegram Login Widget — សម្រាប់ឱ្យអ្នកប្រើប្រាស់ Register/Login ជាមួយ Telegram
     # បង្កើត Bot តាម @BotFather ហើយកំណត់ Domain តាម /setdomain
     TELEGRAM_BOT_TOKEN: str = ""

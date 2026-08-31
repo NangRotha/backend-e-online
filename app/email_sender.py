@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import html
 import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+import httpx
+
 from .config import settings
 
 logger = logging.getLogger("uvicorn.error")
@@ -10,22 +15,77 @@ logger = logging.getLogger("uvicorn.error")
 # ផ្ទុកកំហុស SMTP ចុងក្រោយ (សម្រាប់ពិនិត្យលើ Production តាម /api/auth/email-config)
 _last_smtp_error = None
 
+_BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+
 def smtp_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ SMTP credentials នៅក្នុង .env ឬអត់"""
     return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
 
 
+def brevo_api_configured() -> bool:
+    """ពិនិត្យថាបានកំណត់ Brevo HTTP API Key (xkeysib-...)"""
+    key = (settings.BREVO_API_KEY or "").strip()
+    return bool(key and key.startswith("xkeysib"))
+
+
 def email_status() -> dict:
     """ស្ថានភាព Email — សម្រាប់ពិនិត្យលើ Production (curl /api/auth/email-config)"""
     return {
-        "configured": smtp_configured(),
-        "provider": settings.SMTP_HOST or "",
+        "configured": smtp_configured() or brevo_api_configured(),
+        "method": "brevo_api" if brevo_api_configured() else ("smtp" if smtp_configured() else "none"),
+        "provider": settings.SMTP_HOST or "api.brevo.com",
         "port": settings.SMTP_PORT,
         "use_ssl": settings.SMTP_USE_SSL,
         "sender": settings.SMTP_FROM or settings.SMTP_USER or "",
         "from_name": settings.SMTP_FROM_NAME or "",
-        "last_error": _last_smtp_error,  # កំហុស SMTP ចុងក្រោយ (None = អត់មាន)
+        "last_error": _last_smtp_error,  # កំហុសចុងក្រោយ (None = អត់មាន)
     }
+
+
+def _send_via_brevo_api(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str = "",
+    from_name: str | None = None,
+) -> bool:
+    """ផ្ញើ Email តាម Brevo HTTP API (HTTPS port 443) — ដំណើរការលើ Render free tier
+    (ព្រោះ Render អាចបិទ port 587/465 SMTP)"""
+    global _last_smtp_error
+    from_addr = settings.SMTP_FROM or settings.SMTP_USER
+    payload = {
+        "sender": {
+            "name": from_name or settings.SMTP_FROM_NAME or "Store",
+            "email": from_addr,
+        },
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_body,
+    }
+    if text_body:
+        payload["textContent"] = text_body
+    try:
+        resp = httpx.post(
+            _BREVO_API_URL,
+            headers={
+                "api-key": settings.BREVO_API_KEY.strip(),
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201, 202):
+            logger.info(f"Brevo API email sent to {to_email} ({resp.status_code})")
+            return True
+        # 4xx = បញ្ហា request (sender មិនទាន់ verify / key ខុស)
+        _last_smtp_error = f"Brevo API {resp.status_code}: {resp.text[:300]}"
+        logger.error(f"Brevo API failed for {to_email}: {_last_smtp_error}")
+        return False
+    except Exception as e:
+        _last_smtp_error = f"{type(e).__name__}: {e}"
+        logger.error(f"Brevo API error for {to_email}: {_last_smtp_error}")
+        return False
 
 def _build_otp_html(otp: str, expires_minutes: int) -> str:
     return f"""
@@ -57,15 +117,30 @@ def _connect():
 def send_otp_email(to_email: str, otp: str) -> dict:
     """
     ផ្ញើ OTP ទៅកាន់អ្នកប្រើប្រាស់ **លើសកលលោក** — អាចជាអ៊ីមែលពី Gmail, Yahoo,
-    Outlook, Hotmail, ឬ domain ផ្ទាល់ខ្លួនណាមួយ។ SMTP របស់យើងគ្រាន់តែជាអ្នកផ្ញើ
-    (sender) ហើយ Gmail/provider ផ្សេងៗ នឹងបញ្ជូនទៅកាន់ inbox ណាក៏បានក្នុងលោក។
-
-    បើ SMTP មិនទាន់កំណត់ -> បង្ហាញ OTP នៅ Console (Dev Mode) ហើយអាចយកទៅប្រើភ្លាមៗ។
+    Outlook, Hotmail, ឬ domain ផ្ទាល់ខ្លួនណាមួយ។ វិធីផ្ញើ (ជ្រើសដោយស្វ័យប្រវត្តិ)៖
+      1) Brevo HTTP API (HTTPS) — បើកំណត់ BREVO_API_KEY (ដំណើរការលើ Render)
+      2) SMTP — បើកំណត់ SMTP_*
+      3) Dev Mode — បង្ហាញ OTP នៅ Console (បើគ្មានអ្វីទាំងអស់)
     Returns: {"sent", "dev_otp", "reason"} — reason: None | "not_configured" | "send_failed"
     """
-    if not smtp_configured():
-        logger.warning(f"[DEV MODE] OTP for {to_email} = {otp}  (SMTP not configured in .env)")
+    configured = smtp_configured() or brevo_api_configured()
+    if not configured:
+        logger.warning(f"[DEV MODE] OTP for {to_email} = {otp}  (Email not configured in .env)")
         return {"sent": False, "dev_otp": otp, "reason": "not_configured"}
+
+    subject = "Your verification code"
+    html_body = _build_otp_html(otp, settings.OTP_EXPIRE_MINUTES)
+
+    # 1) Brevo HTTP API (HTTPS port 443 — ដំណើរការលើ Render free tier)
+    if brevo_api_configured():
+        if _send_via_brevo_api(to_email, subject, html_body):
+            return {"sent": True, "dev_otp": None, "reason": None}
+        logger.warning(f"Brevo API failed for {to_email} — trying SMTP fallback")
+
+    # 2) SMTP
+    if not smtp_configured():
+        logger.warning(f"[DEV MODE] OTP for {to_email} = {otp}  (SMTP not configured)")
+        return {"sent": False, "dev_otp": otp, "reason": "send_failed"}
 
     from_addr = settings.SMTP_FROM or settings.SMTP_USER
     if settings.SMTP_FROM_NAME:
@@ -74,10 +149,10 @@ def send_otp_email(to_email: str, otp: str) -> dict:
         from_header = from_addr
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Your verification code"
+    msg["Subject"] = subject
     msg["From"] = from_header
     msg["To"] = to_email
-    msg.attach(MIMEText(_build_otp_html(otp, settings.OTP_EXPIRE_MINUTES), "html"))
+    msg.attach(MIMEText(html_body, "html"))
 
     try:
         with _connect() as server:
@@ -332,8 +407,29 @@ def send_order_receipt_email(to_email: str, data: dict) -> dict:
     """
     ផ្ញើ Receipt (ការបញ្ជាក់ការបង់ប្រាក់ជោគជ័យ) ទៅកាន់អ្នកប្រើ។
     data ត្រូវតែមាន: order_id, total, items[]...
-    បើ SMTP មិនបានកំណត់ -> បោះពុម្ពនៅ Console (Dev Mode) ដោយមិន crash។
+    វិធីផ្ញើ (ជ្រើសដោយស្វ័យប្រវត្តិ)៖ Brevo HTTP API -> SMTP -> Dev Mode។
     """
+    if not (smtp_configured() or brevo_api_configured()):
+        logger.info(
+            f"[DEV MODE] Receipt email for order #{data.get('order_id')} "
+            f"would be sent to {to_email}"
+        )
+        return {"sent": False}
+
+    subject = f"Payment Confirmed · Order #{data.get('order_id')} — Thank you! 🎉"
+    text_body = _build_receipt_text(data)
+    html_body = _build_receipt_html(data)
+    from_name = data.get("site_name") or settings.SMTP_FROM_NAME or "Store"
+
+    # 1) Brevo HTTP API (HTTPS port 443 — ដំណើរការលើ Render free tier)
+    if brevo_api_configured():
+        if _send_via_brevo_api(
+            to_email, subject, html_body, text_body=text_body, from_name=from_name
+        ):
+            return {"sent": True}
+        logger.warning(f"Brevo API failed for receipt -> trying SMTP fallback")
+
+    # 2) SMTP
     if not smtp_configured():
         logger.info(
             f"[DEV MODE] Receipt email for order #{data.get('order_id')} "
@@ -342,15 +438,14 @@ def send_order_receipt_email(to_email: str, data: dict) -> dict:
         return {"sent": False}
 
     from_addr = settings.SMTP_FROM or settings.SMTP_USER
-    from_name = data.get("site_name") or settings.SMTP_FROM_NAME or "Store"
     from_header = f"{from_name} <{from_addr}>"
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Payment Confirmed · Order #{data.get('order_id')} — Thank you! 🎉"
+    msg["Subject"] = subject
     msg["From"] = from_header
     msg["To"] = to_email
-    msg.attach(MIMEText(_build_receipt_text(data), "plain"))
-    msg.attach(MIMEText(_build_receipt_html(data), "html"))
+    msg.attach(MIMEText(text_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
 
     try:
         with _connect() as server:
