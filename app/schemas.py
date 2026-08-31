@@ -46,6 +46,9 @@ class VerifyOtpRequest(BaseModel):
 class ResendOtpRequest(BaseModel):
     email: EmailStr
 
+class TestEmailRequest(BaseModel):
+    email: EmailStr
+
 class TelegramAuthData(BaseModel):
     """ទិន្នន័យដែល Telegram Login Widget ផ្ញើមក"""
     id: int

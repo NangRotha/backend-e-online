@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 import uuid
 from .. import models, schemas, auth, otp
 from ..database import get_db
+from ..deps import get_current_admin
 from ..email_sender import send_otp_email, email_status
 from ..config import settings
 from ..telegram import verify_telegram_auth, telegram_configured
@@ -14,6 +15,21 @@ def email_config():
     """ពិនិត្យថា Email (OTP) បានបើកដំណើរការលើ Server ឬអត់
     (សម្រាប់ Admin ពិនិត្យលើ Production: curl https://<backend>/api/auth/email-config)"""
     return email_status()
+
+@router.post("/test-email")
+def send_test_email(
+    payload: schemas.TestEmailRequest,
+    admin: models.User = Depends(get_current_admin),
+):
+    """Admin: ផ្ញើ OTP សាកល្បងទៅអាសយដ្ឋានណាមួយ — ពិនិត្យ SMTP លើ Production ភ្លាមៗ
+    (ផ្ញើ code 123456 ហើយបង្ហាញ last_error បើបរាជ័យ)"""
+    result = send_otp_email(payload.email, "123456")
+    return {
+        "sent": result["sent"],
+        "reason": result["reason"],
+        "email": payload.email,
+        "status": email_status(),
+    }
 
 @router.post("/register", response_model=schemas.RegisterResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):

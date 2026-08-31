@@ -7,6 +7,9 @@ from .config import settings
 
 logger = logging.getLogger("uvicorn.error")
 
+# ផ្ទុកកំហុស SMTP ចុងក្រោយ (សម្រាប់ពិនិត្យលើ Production តាម /api/auth/email-config)
+_last_smtp_error = None
+
 def smtp_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ SMTP credentials នៅក្នុង .env ឬអត់"""
     return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
@@ -17,8 +20,11 @@ def email_status() -> dict:
     return {
         "configured": smtp_configured(),
         "provider": settings.SMTP_HOST or "",
+        "port": settings.SMTP_PORT,
+        "use_ssl": settings.SMTP_USE_SSL,
         "sender": settings.SMTP_FROM or settings.SMTP_USER or "",
         "from_name": settings.SMTP_FROM_NAME or "",
+        "last_error": _last_smtp_error,  # កំហុស SMTP ចុងក្រោយ (None = អត់មាន)
     }
 
 def _build_otp_html(otp: str, expires_minutes: int) -> str:
@@ -79,7 +85,9 @@ def send_otp_email(to_email: str, otp: str) -> dict:
         logger.info(f"OTP email sent to {to_email}")
         return {"sent": True, "dev_otp": None, "reason": None}
     except Exception as e:
-        logger.error(f"Failed to send OTP email to {to_email}: {type(e).__name__}: {e}")
+        global _last_smtp_error
+        _last_smtp_error = f"{type(e).__name__}: {e}"
+        logger.error(f"Failed to send OTP email to {to_email}: {_last_smtp_error}")
         # Fallback: បង្ហាញ OTP នៅ Console ដើម្បីកុំឱ្យស្ទះការសាកល្បង
         logger.warning(f"[FALLBACK] OTP for {to_email} = {otp}")
         return {"sent": False, "dev_otp": otp, "reason": "send_failed"}
@@ -352,6 +360,8 @@ def send_order_receipt_email(to_email: str, data: dict) -> dict:
         )
         return {"sent": True}
     except Exception as e:
-        logger.error(f"Failed to send receipt email to {to_email}: {e}")
+        global _last_smtp_error
+        _last_smtp_error = f"{type(e).__name__}: {e}"
+        logger.error(f"Failed to send receipt email to {to_email}: {_last_smtp_error}")
         return {"sent": False}
 
