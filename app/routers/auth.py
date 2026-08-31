@@ -3,11 +3,17 @@ from sqlalchemy.orm import Session
 import uuid
 from .. import models, schemas, auth, otp
 from ..database import get_db
-from ..email_sender import send_otp_email
+from ..email_sender import send_otp_email, email_status
 from ..config import settings
 from ..telegram import verify_telegram_auth, telegram_configured
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+@router.get("/email-config")
+def email_config():
+    """ពិនិត្យថា Email (OTP) បានបើកដំណើរការលើ Server ឬអត់
+    (សម្រាប់ Admin ពិនិត្យលើ Production: curl https://<backend>/api/auth/email-config)"""
+    return email_status()
 
 @router.post("/register", response_model=schemas.RegisterResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -34,6 +40,7 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
         "message": "Registration successful. Check your email for the verification code.",
         "email": user.email,
         "dev_otp": result.get("dev_otp"),
+        "otp_reason": result.get("reason"),
     }
 
 @router.post("/verify-otp", response_model=schemas.Token)
@@ -69,6 +76,7 @@ def resend_otp(payload: schemas.ResendOtpRequest, db: Session = Depends(get_db))
         "message": "A new verification code has been sent.",
         "email": payload.email,
         "dev_otp": result.get("dev_otp"),
+        "otp_reason": result.get("reason"),
     }
 
 @router.post("/login", response_model=schemas.Token)

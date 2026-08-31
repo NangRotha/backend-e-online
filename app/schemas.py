@@ -37,6 +37,7 @@ class RegisterResponse(BaseModel):
     message: str
     email: EmailStr
     dev_otp: Optional[str] = None  # បង្ហាញតែពេល SMTP មិនទាន់កំណត់ (Dev Mode)
+    otp_reason: Optional[str] = None  # None | "not_configured" | "send_failed"
 
 class VerifyOtpRequest(BaseModel):
     email: EmailStr

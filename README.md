@@ -98,6 +98,27 @@ CLOUDINARY_API_SECRET=your-api-secret
 - **Read**: Frontend បង្ហាញ URL ផ្ទាល់ពី Cloudinary
 - **Update**: លុបរូបចាស់ចេញពី Cloudinary ពេលប្តូរទៅរូបថ្មី
 - **Delete**: លុបរូបចេញពី Cloudinary ពេលលុប Product / Slide / Alert / Profile
+
+### OTP Email — ផ្ញើទៅអ៊ីមែលណាក៏បានក្នុងលោក (Global)
+
+SMTP គ្រាន់តែជា **អ្នកផ្ញើ** (sender) — អ្នកទទួលអាចជា Gmail / Yahoo / Outlook /
+Hotmail / Zoho / domain ផ្ទាល់ខ្លួន ក្នុងប្រទេសណាក៏បាន។ ប្តូរ provider ត្រឹមតែ
+ប្តូរ env vars ខាងក្រោម (មិនបាច់កែកូដ)៖
+
+| Provider   | `SMTP_HOST`            | Port | `SMTP_USE_SSL` | Free tier       | សម្គាល់ |
+| ---------- | ---------------------- | ---- | -------------- | --------------- | ------- |
+| Gmail      | `smtp.gmail.com`       | 587  | `False`        | 500 emails/day  | ត្រូវប្រើ App Password |
+| **Brevo** (ណែនាំ) | `smtp-relay.brevo.com` | 587  | `False`        | 300 emails/day  | `SMTP_USER`=login, `SMTP_PASSWORD`=master password |
+| SendGrid   | `smtp.sendgrid.net`    | 587  | `False`        | 100 emails/day  | API Key |
+| Mailgun    | `smtp.mailgun.org`     | 587  | `False`        | 100 emails/day  | domain SMTP login |
+| Zoho       | `smtp.zoho.com`        | 465  | `True`         | 5 users / 250/day | — |
+
+ពិនិត្យលើ Production ថា Email បានបើក៖
+```bash
+curl https://<your-backend>.onrender.com/api/auth/email-config
+# → {"configured":true,"provider":"smtp.gmail.com","sender":"...","from_name":"E-Online"}
+```
+បើ `configured:false` -> ដាក់ `SMTP_*` env vars លើ Render Dashboard ហើយ Redeploy។
 - បើអត់កំណត់ Cloudinary -> នឹងប្រើ Local Disk (`backend/uploads/`) ដូចពីមុន
 
 យក Cloud Name / API Key / API Secret ពី Cloudinary Dashboard → **Settings → API Keys**

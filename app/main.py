@@ -5,9 +5,19 @@ from .database import init_db
 from .config import settings as app_settings
 from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts, payments
 from .storage import ensure_upload_dir
+from .email_sender import email_status
 
 # បង្កើតតារាងទាំងអស់ក្នុង PostgreSQL ប្រសិនបើមិនទាន់មាន (រួមទាំង Migration)
 init_db()
+
+# ព្រមានបើ Email (OTP) មិនទាន់កំណត់ — ពេលនោះ OTP នឹងបង្ហាញក្នុង Dev Mode តែប៉ុណ្ណោះ
+_email_cfg = email_status()
+if not _email_cfg["configured"]:
+    print(
+        "⚠️  Email (OTP) NOT configured — SMTP_USER/SMTP_PASSWORD missing.\n"
+        "    OTP emails will NOT be sent; codes show in dev mode instead.\n"
+        "    Add SMTP_* env vars (Gmail/Brevo/SendGrid) to fix."
+    )
 
 app = FastAPI(title="E-commerce API")
 

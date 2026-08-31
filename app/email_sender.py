@@ -11,6 +11,16 @@ def smtp_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ SMTP credentials នៅក្នុង .env ឬអត់"""
     return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
 
+
+def email_status() -> dict:
+    """ស្ថានភាព Email — សម្រាប់ពិនិត្យលើ Production (curl /api/auth/email-config)"""
+    return {
+        "configured": smtp_configured(),
+        "provider": settings.SMTP_HOST or "",
+        "sender": settings.SMTP_FROM or settings.SMTP_USER or "",
+        "from_name": settings.SMTP_FROM_NAME or "",
+    }
+
 def _build_otp_html(otp: str, expires_minutes: int) -> str:
     return f"""
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:16px;">
@@ -45,10 +55,11 @@ def send_otp_email(to_email: str, otp: str) -> dict:
     (sender) ហើយ Gmail/provider ផ្សេងៗ នឹងបញ្ជូនទៅកាន់ inbox ណាក៏បានក្នុងលោក។
 
     បើ SMTP មិនទាន់កំណត់ -> បង្ហាញ OTP នៅ Console (Dev Mode) ហើយអាចយកទៅប្រើភ្លាមៗ។
+    Returns: {"sent", "dev_otp", "reason"} — reason: None | "not_configured" | "send_failed"
     """
     if not smtp_configured():
         logger.warning(f"[DEV MODE] OTP for {to_email} = {otp}  (SMTP not configured in .env)")
-        return {"sent": False, "dev_otp": otp}
+        return {"sent": False, "dev_otp": otp, "reason": "not_configured"}
 
     from_addr = settings.SMTP_FROM or settings.SMTP_USER
     if settings.SMTP_FROM_NAME:
@@ -66,12 +77,12 @@ def send_otp_email(to_email: str, otp: str) -> dict:
         with _connect() as server:
             server.sendmail(from_addr, [to_email], msg.as_string())
         logger.info(f"OTP email sent to {to_email}")
-        return {"sent": True, "dev_otp": None}
+        return {"sent": True, "dev_otp": None, "reason": None}
     except Exception as e:
-        logger.error(f"Failed to send OTP email to {to_email}: {e}")
+        logger.error(f"Failed to send OTP email to {to_email}: {type(e).__name__}: {e}")
         # Fallback: បង្ហាញ OTP នៅ Console ដើម្បីកុំឱ្យស្ទះការសាកល្បង
         logger.warning(f"[FALLBACK] OTP for {to_email} = {otp}")
-        return {"sent": False, "dev_otp": otp}
+        return {"sent": False, "dev_otp": otp, "reason": "send_failed"}
 
 
 # ============================================================
