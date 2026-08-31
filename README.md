@@ -116,9 +116,24 @@ Hotmail / Zoho / domain ផ្ទាល់ខ្លួន ក្នុងប្�
 ពិនិត្យលើ Production ថា Email បានបើក៖
 ```bash
 curl https://<your-backend>.onrender.com/api/auth/email-config
-# → {"configured":true,"provider":"smtp.gmail.com","sender":"...","from_name":"E-Online"}
+# → {"configured":true,"provider":"smtp-relay.brevo.com","sender":"...","from_name":"E-Online","last_error":null}
 ```
 បើ `configured:false` -> ដាក់ `SMTP_*` env vars លើ Render Dashboard ហើយ Redeploy។
+
+### Troubleshooting Brevo
+- `last_error` = `525 5.7.1 Unauthorized IP address` -> **SMTP key កំពុងតែ IP-restricted**។
+  ចូល https://app.brevo.com/settings/keys/smtp -> កែ key ឬបង្កើត key ថ្មី
+  ដោយទុក IP restriction **ទទេ** (អនុញ្ញាតគ្រប់ IP) រួចដាក់ key ថ្មីក្នុង `.env` + Render។
+- `last_error` = sender rejected / `554` -> **SMTP_FROM មិនទាន់ Verify ក្នុង Brevo**។
+  Brevo Dashboard -> **Settings -> Senders & IPs -> Add a sender** -> បញ្ចូលអ៊ីមែល
+  (ឧ. rothanang21@gmail.com) -> ចុចតំណក្នុងអ៊ីមែលដែល Brevo ផ្ញើមកបញ្ជាក់។
+- Admin អាចផ្ញើ OTP សាកល្បង និងមើល error បានភ្លាមៗ៖
+  ```bash
+  curl -X POST https://<backend>/api/auth/test-email \
+    -H "Authorization: Bearer <admin_token>" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"you@gmail.com"}'
+  ```
 - បើអត់កំណត់ Cloudinary -> នឹងប្រើ Local Disk (`backend/uploads/`) ដូចពីមុន
 
 យក Cloud Name / API Key / API Secret ពី Cloudinary Dashboard → **Settings → API Keys**
