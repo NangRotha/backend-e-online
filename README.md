@@ -121,9 +121,10 @@ curl https://<your-backend>.onrender.com/api/auth/email-config
 បើ `configured:false` -> ដាក់ `SMTP_*` env vars លើ Render Dashboard ហើយ Redeploy។
 
 ### Troubleshooting Brevo
-- `last_error` = `525 5.7.1 Unauthorized IP address` -> **SMTP key កំពុងតែ IP-restricted**។
-  ចូល https://app.brevo.com/settings/keys/smtp -> កែ key ឬបង្កើត key ថ្មី
-  ដោយទុក IP restriction **ទទេ** (អនុញ្ញាតគ្រប់ IP) រួចដាក់ key ថ្មីក្នុង `.env` + Render។
+- `last_error` = `525 5.7.1 Unauthorized IP address` **ឬ** `401 ... unrecognised IP address ... authorised_ips`
+  -> **Brevo កំពុងតែបើក IP authorization**។ ចូល
+  **https://app.brevo.com/security/authorised_ips** ហើយ **បិទ (Disable)** IP authorization
+  (ឬបន្ថែម IP របស់ Server/Local ទៅក្នុងបញ្ជី) — ព្រោះ Render ប្រើ IP ប្រែប្រួល។
 - `last_error` = sender rejected / `554` -> **SMTP_FROM មិនទាន់ Verify ក្នុង Brevo**។
   Brevo Dashboard -> **Settings -> Senders & IPs -> Add a sender** -> បញ្ចូលអ៊ីមែល
   (ឧ. rothanang21@gmail.com) -> ចុចតំណក្នុងអ៊ីមែលដែល Brevo ផ្ញើមកបញ្ជាក់។
