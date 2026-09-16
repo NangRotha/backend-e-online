@@ -238,3 +238,29 @@ def toggle_discount(
         "is_active": discount.is_active,
     }
 
+# ==========================================
+# Backup — Export ទិន្នន័យទាំងអស់ជា JSON
+# ==========================================
+@router.get("/export")
+def export_data(db: Session = Depends(_admin)):
+    """Admin: Export ទិន្នន័យទាំងអស់ជា JSON (សម្រាប់ Backup ឬ ផ្លាស់ Database)
+
+    ប្រើជាមួយ `scripts/backup_restore.py import` ដើម្បីផ្លាស់ពី
+    PostgreSQL → SQLite (ឬត្រឡប់វិញ) ដោយមិនបាត់ទិន្នន័យ។
+
+    ចំណាំ: Users ត្រូវបាន Export ដោយគ្មាន `hashed_password` (ការពារសុវត្ថិភាព)
+    """
+    data = {}
+    for table in models.Base.metadata.sorted_tables:
+        rows = db.execute(table.select()).mappings().all()
+        data[table.name] = [
+            {k: v for k, v in dict(row).items()
+             if not (table.name == "users" and k == "hashed_password")}
+            for row in rows
+        ]
+    data["_meta"] = {
+        "exported_tables": {name: len(rows) for name, rows in data.items() if isinstance(rows, list)},
+        "note": "users.hashed_password ត្រូវបានលាក់ — ត្រូវកំណត់ពាក្យសម្ងាត់ឡើងវិញក្រោយ Import",
+    }
+    return data
+

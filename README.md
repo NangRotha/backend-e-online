@@ -18,9 +18,11 @@ Backend ជ្រើសរើស Database ដោយស្វ័យប្រវ�
 
 | លក្ខខណ្ឌ | Database ដែលប្រើ |
 | --- | --- |
-| `RENDER=true` និងមាន `DATABASE_URL_INTERNAL` | PostgreSQL (Internal URL) |
-| មាន `DATABASE_URL` | PostgreSQL (ឬ SQLite បើ URL ចាប់ផ្តើមដោយ `sqlite:`) |
-| គ្មានទាំងពីរ | **SQLite** → `backend/ecommerce.db` (បង្កើតស្វ័យប្រវត្តិ) |
+| `DB_ENGINE=sqlite` | **SQLite** (`SQLITE_PATH` ឬ `backend/ecommerce.db`) — បង្ខំ |
+| `DB_ENGINE=postgres` | PostgreSQL (`DATABASE_URL_INTERNAL` នៅលើ Render បើមាន បើអត់ → `DATABASE_URL`) |
+| `DB_ENGINE=auto` (Default) + `RENDER=true` + `DATABASE_URL_INTERNAL` | PostgreSQL (Internal URL) |
+| `DB_ENGINE=auto` + មាន `DATABASE_URL` | តាម URL នោះ (Postgres ឬ SQLite) |
+| `DB_ENGINE=auto` + គ្មាន URL | **SQLite** → `backend/ecommerce.db` (បង្កើតស្វ័យប្រវត្តិ) |
 
 ### ប្រើ SQLite (សាមញ្ញបំផុត — សម្រាប់ Local)
 
@@ -45,6 +47,78 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 > Ephemeral។ បើចង់ប្រើ SQLite លើ Render ត្រូវបន្ថែម **Persistent Disk**
 > រួចកំណត់ `SQLITE_PATH=/var/data/ecommerce.db` និង `UPLOAD_DIR=/var/data/uploads`។
 > បើមិនចង់បាត់ទិន្នន័យ សូមប្រើ PostgreSQL (`DATABASE_URL`) ដូចពីមុន។
+
+### 🔄 ផ្លាស់ Production ពី PostgreSQL → SQLite (ដោយមិនបាត់ទិន្នន័យ)
+
+> ⚠️ **សំខាន់បំផុត:** Render មិនរក្សាឯកសារ SQLite ទេ បើគ្មាន **Persistent Disk**។
+> Free plan មិនគាំទ្រ Disk → ត្រូវប្រើ Plan ដែលមាន Disk (ឧ. Starter)។
+> បើគ្មាន Disk នោះ **ទិន្នន័យនឹងបាត់រាល់ពេល Redeploy/Restart**។
+
+១) **Export ទិន្នន័យពី Production (Postgres) ជាមុន** — ត្រូវការគណនី Admin៖
+
+```bash
+cd backend-e-online
+.venv/bin/python scripts/backup_restore.py export \
+    --url https://backend-e-online.onrender.com \
+    --email <admin-email> --password '<admin-password>' \
+    --out backup.json
+```
+
+២) **Import ចូល SQLite ក្នុងម៉ាស៊ីនរបស់អ្នក** (ដើម្បីពិនិត្យជាមុន)៖
+
+```bash
+DB_ENGINE=sqlite .venv/bin/python scripts/backup_restore.py import --file backup.json --truncate
+.venv/bin/python create_admin.py <admin-email> --password '<new-password>' --reset
+```
+
+៣) **លើ Render** — Service → Settings បន្ថែម **Disk**៖
+`Name: data` · `Mount Path: /var/data` · `Size: 1 GB`
+
+៤) **លើ Render** — Environment កំណត់៖
+
+```
+DB_ENGINE=sqlite
+SQLITE_PATH=/var/data/ecommerce.db
+UPLOAD_DIR=/var/data/uploads
+DATABASE_URL=            ← ទុកទទេ (ឬលុបចោល)
+DATABASE_URL_INTERNAL=   ← ទុកទទេ (ឬលុបចោល)
+```
+
+> បើទុក `DATABASE_URL` នៅ ត្រូវដាក់ `DB_ENGINE=sqlite` ដើម្បីបង្ខំឱ្យប្រើ SQLite។
+
+៥) **Seed ទិន្នន័យចូល SQLite លើ Render** — មាន ២ វិធី៖
+- **វិធី A (ងាយ):** upload `ecommerce.db` ដែល Import ក្នុងម៉ាស៊ីនទៅ Disk តាម Render Shell៖
+  ```bash
+  # ក្នុង Render Shell
+  mkdir -p /var/data && cat > /var/data/ecommerce.db   # paste SQLite file ជា base64
+  ```
+- **វិធី B (ណែនាំ):** បន្ថែម `backup.json` ទៅ Disk រួច Import តាម Render Shell៖
+  ```bash
+  DB_ENGINE=sqlite SQLITE_PATH=/var/data/ecommerce.db \
+      python scripts/backup_restore.py import --file backup.json --truncate
+  python create_admin.py <admin-email> --password '<new>' --reset
+  ```
+
+៦) **ពិនិត្យ** — Logs ត្រូវបង្ហាញ៖
+```
+   Database   : SQLite (DB_ENGINE=sqlite) → sqlite:////var/data/ecommerce.db
+   Storage DB : ✅ SQLITE_PATH ស្ថិតលើ Persistent Disk (/var/data)
+```
+
+> 💡 បើចង់ត្រឡប់ទៅ PostgreSQL វិញ៖ `DB_ENGINE=postgres` រួច
+> `.venv/bin/python scripts/backup_restore.py import --file backup.json` (ឬប្រើ `from-postgres`)
+
+### 🧰 Backup / Restore / Migration Script
+
+`scripts/backup_restore.py` — ឧបករណ៍ផ្លាស់ទិន្នន័យរវាង Database ដោយមិនបាត់ទិន្នន័យ៖
+
+| Command | ការងារ |
+| --- | --- |
+| `export --url … --email … --password … --out backup.json` | ទាញទិន្នន័យទាំងអស់ចេញពី API (ត្រូវការ Admin) |
+| `import --file backup.json --truncate` | បញ្ចូលទិន្នន័យចូល DB បច្ចុប្បន្ន (តាម `DB_ENGINE`) |
+| `from-postgres` (ប្រើ `SOURCE_DATABASE_URL`) | ចម្លងផ្ទាល់ Postgres → DB បច្ចុប្បន្ន (រួមទាំង Password) |
+
+API endpoint សម្រាប់ Export: `GET /api/admin/export` (Admin only, លាក់ Password)။
 
 ### Migration ស្វ័យប្រវត្តិ
 

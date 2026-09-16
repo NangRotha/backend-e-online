@@ -8,6 +8,7 @@ import time
 # - បើអត់កំណត់ -> SQLite ក្នុងម៉ាស៊ីន (backend/ecommerce.db) ដោយស្វ័យប្រវត្តិ
 DATABASE_URL = settings.active_database_url
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
+DB_ENGINE_LABEL = "SQLite" if IS_SQLITE else "PostgreSQL"
 
 
 def _create_engine():

@@ -42,6 +42,11 @@ services:
       # ឧ. ^https://frontend-(user|admin)-e-online.*\.vercel\.app$
       - key: CORS_ORIGIN_REGEX
         sync: false
+      # Database engine: "auto" (Default) | "sqlite" | "postgres"
+      # បើចង់ប្រើ SQLite លើ Render: ដាក់ "sqlite" + SQLITE_PATH=/var/data/ecommerce.db
+      # រួចបន្ថែម Persistent Disk (មើលព័ត៌មានក្នុង README)
+      - key: DB_ENGINE
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_INTERNAL

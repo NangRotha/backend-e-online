@@ -109,18 +109,34 @@ def _deploy_diagnostics():
     )
     print(
         f"   Database   : {'SQLite' if IS_SQLITE else 'PostgreSQL'} "
-        f"→ {safe_database_url()}",
+        f"(DB_ENGINE={app_settings.db_engine}) → {safe_database_url()}",
         flush=True,
     )
+    if IS_SQLITE:
+        print(f"   SQLite Path: {app_settings.sqlite_file_path}", flush=True)
+
+    # ⚠️ DB_ENGINE=postgres តែគ្មាន DATABASE_URL → បាន Fallback ទៅ SQLite
+    if app_settings.db_engine == "postgres" and not (
+        app_settings.DATABASE_URL or app_settings.DATABASE_URL_INTERNAL
+    ):
+        warnings.append(
+            "DB_ENGINE=postgres ប៉ុន្តែគ្មាន DATABASE_URL — ប្រព័ន្ធបានប្តូរទៅ SQLite វិញ។ "
+            "សូមកំណត់ DATABASE_URL ឬដាក់ DB_ENGINE=sqlite ឱ្យច្បាស់"
+        )
 
     # ⚠️ SQLite លើ Render ត្រូវការ Persistent Disk មិនដូច្នេះទិន្នន័យនឹងបាត់
     if on_render and IS_SQLITE:
         path = app_settings.sqlite_file_path
-        if not path.startswith("/var/data"):
+        if path.startswith("/var/data"):
+            print(
+                "   Storage DB : ✅ SQLITE_PATH ស្ថិតលើ Persistent Disk (/var/data)",
+                flush=True,
+            )
+        else:
             warnings.append(
                 "SQLite លើ Render គ្មាន Persistent Disk → ទិន្នន័យនឹងបាត់ពេល Redeploy! "
-                "សូមកំណត់ DATABASE_URL (Postgres) ឬ SQLITE_PATH=/var/data/ecommerce.db "
-                "រួចបន្ថែម Persistent Disk"
+                "សូមកំណត់ SQLITE_PATH=/var/data/ecommerce.db រួចបន្ថែម Persistent Disk "
+                "(ឬប្រើ DB_ENGINE=postgres + DATABASE_URL)"
             )
 
     if uploadthing_configured():

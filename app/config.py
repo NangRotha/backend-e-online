@@ -14,6 +14,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # ============================================================
+    # Database Engine — ជ្រើសរើសដោយច្បាស់លាស់
+    #   "auto"     = ស្វ័យប្រវត្តិ (RENDER + DATABASE_URL_INTERNAL -> Postgres,
+    #                បើមាន DATABASE_URL -> តាមវា, បើអត់ -> SQLite)  [Default]
+    #   "sqlite"   = បង្ខំឱ្យប្រើ SQLite (SQLITE_PATH ឬ backend/ecommerce.db)
+    #   "postgres" = បង្ខំឱ្យប្រើ PostgreSQL (ត្រូវមាន DATABASE_URL)
+    # ============================================================
+    DB_ENGINE: str = "auto"
+
     # PostgreSQL (Render) — External Database URL
     # ប្រើសម្រាប់ Local Development និង Deploy លើ Vercel
     DATABASE_URL: str = ""
@@ -89,14 +98,40 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "https://frontend-user-e-online.vercel.app"
 
     @property
-    def active_database_url(self) -> str:
-        """ជ្រើសរើស Database ត្រឹមត្រូវតាមបរិស្ថានដំណើរការ៖
+    def db_engine(self) -> str:
+        """'sqlite' | 'postgres' | 'auto' (ធ្វើឱ្យ DB_ENGINE ត្រឹមត្រូវ)"""
+        value = (self.DB_ENGINE or "auto").strip().lower()
+        if value in ("sqlite", "sqlite3", "file"):
+            return "sqlite"
+        if value in ("postgres", "postgresql", "pg", "psql"):
+            return "postgres"
+        return "auto"
 
-        1. នៅលើ Render ហើយមាន `DATABASE_URL_INTERNAL` -> ប្រើ Internal (លឿន និងសុវត្ថិភាពជាង)
-        2. បើកំណត់ `DATABASE_URL` -> ប្រើវា (PostgreSQL ឬ SQLite)
-        3. បើគ្មានទាំងពីរ -> ប្រើ **SQLite** ក្នុងម៉ាស៊ីន (`backend/ecommerce.db`)
-           ដូច្នេះ Backend អាចដំណើរការបានភ្លាមៗដោយមិនចាំបាច់បើក PostgreSQL
+    @property
+    def active_database_url(self) -> str:
+        """ជ្រើសរើស Database តាមលំដាប់អាទិភាព៖
+
+        1. `DB_ENGINE=sqlite`   → **SQLite** (SQLITE_PATH ឬ `backend/ecommerce.db`) — បង្ខំ
+        2. `DB_ENGINE=postgres` → PostgreSQL (`DATABASE_URL_INTERNAL` នៅលើ Render បើមាន)
+        3. `DB_ENGINE=auto` (Default)៖
+           - នៅលើ Render + មាន `DATABASE_URL_INTERNAL` → PostgreSQL (Internal)
+           - បើកំណត់ `DATABASE_URL` → តាម URL នោះ
+           - បើគ្មានទាំងពីរ → **SQLite** (`backend/ecommerce.db`)
         """
+        engine = self.db_engine
+
+        if engine == "sqlite":
+            return f"sqlite:///{self.sqlite_file_path}"
+
+        if engine == "postgres":
+            if self.RENDER.lower() == "true" and self.DATABASE_URL_INTERNAL:
+                return self.DATABASE_URL_INTERNAL
+            if self.DATABASE_URL:
+                return self.DATABASE_URL
+            # បើគ្មាន URL -> ប្រើ SQLite ជំនួស (ព្រមានក្នុង Startup Diagnostics)
+            return f"sqlite:///{self.sqlite_file_path}"
+
+        # auto
         if self.RENDER.lower() == "true" and self.DATABASE_URL_INTERNAL:
             return self.DATABASE_URL_INTERNAL
         if self.DATABASE_URL:

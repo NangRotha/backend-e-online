@@ -57,6 +57,11 @@ def main():
         help="Password (បើមិនផ្តល់ -> បង្កើតឱ្យស្វ័យប្រវត្តិ)",
     )
     parser.add_argument("--name", default=None, help="Display name (default: Admin)")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="កំណត់ពាក្យសម្ងាត់ថ្មី ទោះគណនីមានរួច (ត្រូវភ្ជាប់ជាមួយ --password)",
+    )
     args = parser.parse_args()
 
     email = args.email.strip().lower()
@@ -76,8 +81,20 @@ def main():
         user = db.query(models.User).filter(models.User.email == email).first()
 
         if user:
+            if args.reset and args.password:
+                # កំណត់ពាក្យសម្ងាត់ថ្មី (ប្រើក្រោយ Import/ផ្លាស់ Database)
+                user.hashed_password = auth.hash_password(args.password)
+                user.role = "admin"
+                user.email_verified = True
+                if args.name:
+                    user.name = args.name.strip() or user.name
+                db.commit()
+                print(f"✅ Password reset for '{email}' (role: admin)")
+                return
+
             if user.role == "admin":
                 print(f"ℹ️  '{email}' is already an ADMIN.")
+                print("   (បើចង់ប្តូរពាក្យសម្ងាត់ -> បន្ថែម --password '<new>' --reset)")
                 return
             user.role = "admin"
             db.commit()
