@@ -150,7 +150,90 @@ Local Disk `backend/uploads/`។ ពេលលុប/ប្តូរវីដេ�
 
 ---
 
-## Deploy លើ Render
+## 💳 ABA Pay / KHQRcc — QR + Managed Checkout (v2)
+
+Env vars ដែលត្រូវការ៖
+
+| Env Var | កន្លែងយក |
+| --- | --- |
+| `KHQRCC_PROFILE_ID` | khqr.cc → Gateway → **API Security Essentials → Profile ID** |
+| `KHQRCC_SECRET_KEY` | khqr.cc → **Secret Key** (ចុច RE-GENERATE បើសង្ស័យថាលេចធ្លាយ) |
+| `FRONTEND_URL` | `https://frontend-user-e-online.vercel.app` (សម្រាប់ `success_url` / `cancel_url`) |
+
+### ដំណើរការ (ពេលអតិថិជន Checkout)
+
+1. Backend ហៅ **QR API** (`/{profile}/payment-gateway/v1/payments/qr-api-khqrcc`)
+   ដើម្បីទាញ **EMV KHQR string** (+ រូបភាព បើ Gateway ផ្តល់មក)
+   - hash = `sha1(secret + transaction_id + amount + success_url + remark)`
+2. បើ Gateway **មិនផ្តល់រូបភាព** → Backend **បង្កើតរូប QR ខ្លួនឯង** ពី EMV string
+   (`app/qr.py` ប្រើ `qrcode[pil]`) រួចរក្សាទុកក្នុង UploadThing/Cloudinary/Local
+3. Backend បង្កើត **Managed Checkout v2 URL** ខ្លួនឯង៖
+   `https://checkout.khqr.cc/payment/khqrcc/{profile_id}?transaction_id=…&amount=…&success_url=…&remark=…&hash=…&cancel_url=…&items=<base64>`
+   → បើ Gateway ជាប់/Timeout ក៏ Link នេះនៅតែប្រើបាន ✓
+4. Storefront (Order Success)៖
+   - បើមានរូប QR → បង្ហាញរូប + ឈ្មោះអ្នកទទួល + Bakong ID
+   - បើអត់មានរូប → បង្ហាញប៊ូតុង **“Pay with ABA Pay / KHQRcc”**
+     (បើកតាម **KHQRcc Checkout Plugin** `KhqrPayway.openCheckout`, បើ Plugin ផ្ទុកមិនបាន → បើក Tab ថ្មី)
+     ព្រមទាំង “Open checkout” និង “Copy payment link”
+5. **Auto-detect**៖ ទំព័រ Poll `/api/payments/status` រៀងរាល់ 3 វិនាទី →
+   ពេល `success` → `/api/payments/confirm` → Order = `paid` + ផ្ញើ Receipt
+   (Webhook `POST /api/payments/callback` ក៏មានដែរ សម្រាប់ Server-to-Server)
+
+### 🔧 Setup ក្នុង khqr.cc Dashboard (ធ្វើម្តង)
+
+| កន្លែងក្នុង Dashboard | តម្លៃដែលត្រូវដាក់ |
+| --- | --- |
+| **API Security Essentials → Profile ID** | ដាក់ក្នុង Render Env: `KHQRCC_PROFILE_ID` |
+| **API Security Essentials → Secret Key** | ដាក់ក្នុង Render Env: `KHQRCC_SECRET_KEY` (ចុច RE-GENERATE បើលេចធ្លាយ) |
+| **Global Webhook Endpoint** | `https://backend-e-online.onrender.com/api/payments/callback` |
+| **Custom Callback Payload** | ទុកទទេ (Default) ឬប្រើ placeholders៖ `{{transaction_id}}, {{amount}}, {{status}}, {{req_time}}, {{hash}}` |
+| **Bakong Wallet → Company Name / Display Name / Currency** | កំណត់ក្នុង **Admin Panel → Settings → Bakong Wallet** (រក្សាទុកក្នុង DB) |
+| **Bakong Wallet → Bakong Wallet ID** | លេខគណនី Bakong ផ្ទាល់ខ្លួន (ឧ. `yourname@acleda`) — បង្ហាញលើផ្ទៃបង់ប្រាក់ |
+
+> ✅ **Webhook = សំខាន់បំផុត** — បើទុកទទេ ការបង់ប្រាក់នឹងបញ្ជាក់បានតែពេលអតិថិជន
+> នៅលើទំព័រ Order Success (Poll 3 វិនាទី)។ បើដាក់ Webhook នោះ Order នឹងប្តូរទៅ
+> `paid` ទោះអតិថិជនបិទ Browser ក៏ដោយ។
+
+### ✅ ការបញ្ជាក់ការបង់ប្រាក់ (៣ ស្រទាប់)
+
+1. **Redirect Params** — Gateway Redirect ទៅ `success_url` ជាមួយ `success_hash`,
+   `success_time`, `success_amount` → Storefront ហៅ `/api/payments/confirm` ភ្លាម
+   (Server ផ្ទៀងផ្ទាត់ម្តងទៀតជាមួយ Gateway — មិនជឿតែ Query String)
+2. **Polling** — រៀងរាល់ 3 វិនាទី រហូត 3 នាទី (តាមឯកសារ) បន្ទាប់មកឈប់ និងបង្ហាញ
+   “QR ផុតកំណត់” + ប៊ូតុង **Check payment now** (ចុចរួចចាប់ផ្តើម Poll ឡើងវិញ)
+3. **Webhook** — `POST /api/payments/callback` ពិនិត្យ hash
+   `sha256(secret + req_time + transaction_id + amount + "SUCCESS")` → `paid` + ផ្ញើ Receipt
+
+### Checkout URLs (មាន ២ ប្រភេទ)
+
+| Field | តម្លៃ | ប្រើសម្រាប់ |
+| --- | --- | --- |
+| `payment_url` | `https://khqr.cc/api/payment/requestv2/{profile}?…` | **KHQRcc Checkout Plugin** (`KhqrPayway.openCheckout`) + Redirect |
+| `payment_checkout_url` | `https://checkout.khqr.cc/payment/khqrcc/{profile}?…` | បើកក្នុង Tab ថ្មី / ចម្លងជា Link |
+
+ទាំងពីរមាន `hash = sha1(secret + transaction_id + amount + success_url + remark)`
+ព្រមទាំង `cancel_url` / `items` (base64) / `custom_fields` (base64)។
+
+
+
+| Endpoint | ការងារ |
+| --- | --- |
+| `GET /api/payments/config` | បើក/បិទ + ព័ត៌មាន Bakong Wallet (Company/Display/Bakong ID/Currency) |
+| `POST /api/payments/create` | បង្កើត QR (Admin/Test) |
+| `POST /api/payments/status` | ពិនិត្យស្ថានភាព (Verify V2) |
+| `POST /api/payments/confirm` | ផ្ទៀងផ្ទាត់ + ប្តូរ Order → paid |
+| `POST /api/payments/callback` | Webhook ពី Gateway (hash sha256) |
+
+### ⚠️ ដោះស្រាយបញ្ហា QR
+
+| រោគសញ្ញា | មូលហេតុ / ដំណោះស្រាយ |
+| --- | --- |
+| ទំព័រ Order Success មិនបង្ហាញ QR | ធ្លាប់កើតព្រោះ Gateway ត្រឡប់តែ EMV string → **បានជួសជុល** ដោយបង្កើតរូប QR ខ្លួនឯង |
+| គ្មាន QR ទាល់តែសោះ (Gateway Timeout) | ឥឡូវបង្ហាញប៊ូតុង ABA Pay Checkout — អតិថិជននៅតែបង់បាត់បាន |
+| `khqr.cc` មិនអាចភ្ជាប់ (Timeout) | បណ្តាញ/ISP បិទ — សាកល្បងបើក `https://khqr.cc` ក្នុង Browser; លើ Render ធម្មតាភ្ជាប់បាន |
+| ការបង់ប្រាក់មិន Auto-confirm | ពិនិត្យ `KHQRCC_SECRET_KEY` (ត្រូវតែត្រូវនឹង Profile) និង Webhook URL ក្នុង khqr.cc Dashboard |
+
+
 
 ### ✅ Checklist មុន Deploy (សំខាន់)
 

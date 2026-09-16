@@ -1,27 +1,181 @@
+import base64
 import hashlib
 import hmac
+import json
 import logging
 import uuid
+from urllib.parse import urlencode
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from .. import models, schemas
 from ..database import get_db
 from ..config import settings
 from ..email_sender import smtp_configured, brevo_api_configured, send_order_receipt_email
 from ..ws_manager import broadcast_orders_changed
 
+# qrcode ជា Optional — បើ Library មិនបានដំឡើង App នៅតែដំណើរការ (ត្រឡប់ QR ចេញពី Gateway)
+try:
+    from ..qr import generate_qr_png
+except Exception:  # noqa: BLE001
+    generate_qr_png = None
+
+try:
+    from ..storage import save_upload
+except Exception:  # noqa: BLE001
+    save_upload = None
+
 router = APIRouter(prefix="/api/payments", tags=["ABA Pay (KHQRcc)"])
 
 logger = logging.getLogger("uvicorn.error")
 
 KHQRCC_BASE = "https://khqr.cc"
+# Managed Checkout (requestv2) — Auto-redirect ទៅ ABA Pay Checkout (ប្រើជាមួយ Plugin)
+KHQRCC_REDIRECT_BASE = "https://khqr.cc/api/payment/requestv2"
+# Frontend Checkout URL (Managed Checkout v2) — ទំព័រ ABA Pay ផ្ទាល់ (មាន KHQR + Deeplink)
+KHQRCC_CHECKOUT_BASE = "https://checkout.khqr.cc/payment/khqrcc"
 
 
 def payment_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ KHQRcc (Profile ID + Secret Key) ឬអត់"""
     return bool(settings.KHQRCC_PROFILE_ID and settings.KHQRCC_SECRET_KEY)
+
+
+def _extract_qr_fields(result: dict) -> tuple[str, str]:
+    """ត្រឡប់ (qr_string, qr_image_url) ពី Response របស់ Gateway
+
+    Gateway អាចត្រឡប់ឈ្មោះ Field ផ្សេងគ្នា (ឬ JSON) ដូច្នេះយើងពិនិត្យច្រើនទម្រង់។
+    """
+    if not isinstance(result, dict):
+        return "", ""
+    data = result.get("data") if isinstance(result.get("data"), dict) else result
+
+    def pick(*keys) -> str:
+        for source in (data, result):
+            for key in keys:
+                value = source.get(key) if isinstance(source, dict) else None
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return ""
+
+    qr_string = pick(
+        "qr", "qr_string", "qrString", "qr_code", "qrCode", "qr_data", "qrData", "emv"
+    )
+    qr_image = pick(
+        "qr_url", "qrUrl", "qr_image", "qrImage", "qr_image_url", "qrImageUrl",
+        "image_url", "imageUrl", "image",
+    )
+    return qr_string, qr_image
+
+
+def _ensure_qr_image(qr_string: str, qr_image_url: str, transaction_id: str) -> str:
+    """ធានាថាមានរូប QR — បើ Gateway មិនផ្តល់រូប យើងបង្កើតខ្លួនឯងពី EMV string"""
+    if qr_image_url:
+        return qr_image_url
+    if not qr_string or generate_qr_png is None or save_upload is None:
+        return ""
+    try:
+        png = generate_qr_png(qr_string)
+        saved = save_upload(png, f"khqr-{transaction_id}.png", folder="qr")
+        return saved.get("url", "") or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"QR image generation failed for {transaction_id}: {exc}")
+        return ""
+
+
+def _encode_items(items: Optional[List[Dict]]) -> str:
+    """Base64(JSON) នៃ Cart Items — តាមឯកសារ KHQRcc (items parameter)"""
+    if not items:
+        return ""
+    try:
+        raw = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+        return base64.b64encode(raw.encode()).decode()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _payment_params(
+    transaction_id: str,
+    amount: str,
+    success_url: str,
+    remark: str = "",
+    cancel_url: str = "",
+    items_b64: str = "",
+    custom_fields_b64: str = "",
+) -> dict:
+    """បង្កើត Parameters តាមឯកសារ KHQRcc (hash = sha1(secret+id+amount+success_url+remark))"""
+    params = {
+        "transaction_id": transaction_id,
+        "amount": amount,
+        "success_url": success_url,
+        "remark": remark,
+        "hash": _sha1(
+            settings.KHQRCC_SECRET_KEY, transaction_id, amount, success_url, remark
+        ),
+    }
+    if cancel_url:
+        params["cancel_url"] = cancel_url
+    if items_b64:
+        params["items"] = items_b64
+    if custom_fields_b64:
+        params["custom_fields"] = custom_fields_b64
+    return params
+
+
+def build_redirect_url(
+    transaction_id: str,
+    amount: str,
+    success_url: str,
+    remark: str = "",
+    cancel_url: str = "",
+    items_b64: str = "",
+    custom_fields_b64: str = "",
+) -> str:
+    """Managed Checkout (requestv2) — Gateway នឹង Auto-redirect ទៅ ABA Pay Checkout
+
+    ⚠️ នេះជា URL ដែល **KHQRcc Checkout Plugin** ត្រូវការ (`KhqrPayway.openCheckout`).
+    """
+    query = urlencode(
+        _payment_params(
+            transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
+        )
+    )
+    return f"{KHQRCC_REDIRECT_BASE}/{settings.KHQRCC_PROFILE_ID}?{query}"
+
+
+def build_checkout_url(
+    transaction_id: str,
+    amount: str,
+    success_url: str,
+    remark: str = "",
+    cancel_url: str = "",
+    items_b64: str = "",
+    custom_fields_b64: str = "",
+) -> str:
+    """Frontend Checkout URL ផ្ទាល់ (`checkout.khqr.cc/payment/khqrcc/{profile}`)
+
+    លឿនជាងមួយជំហាត់ (មិនបាច់ Redirect) — ប្រើសម្រាប់ Link / “Open checkout”
+    """
+    query = urlencode(
+        _payment_params(
+            transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
+        )
+    )
+    return f"{KHQRCC_CHECKOUT_BASE}/{settings.KHQRCC_PROFILE_ID}?{query}"
+
+
+def _encode_custom_fields(data: Optional[Dict]) -> str:
+    """Base64(JSON) នៃទិន្នន័យបន្ថែម (Gateway ផ្ញើមកវិញពេល Callback)"""
+    if not data:
+        return ""
+    try:
+        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        return base64.b64encode(raw.encode()).decode()
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 
 def _fmt_amount(amount: float) -> str:
@@ -92,7 +246,12 @@ async def create_payment(payload: schemas.PaymentCreateRequest):
             payload.remark,
         ),
     }
-    async with httpx.AsyncClient(timeout=30) as client:
+    # Parameters ជាជម្រើស (តាមឯកសារ KHQRcc) — Gateway ផ្ញើមកវិញពេល Callback
+    for key in ("cancel_url", "items", "custom_fields"):
+        value = (getattr(payload, key, "") or "").strip()
+        if value:
+            data[key] = value
+    async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(_qr_api_url(), data=data)
         try:
             result = resp.json()
@@ -105,12 +264,13 @@ async def create_payment(payload: schemas.PaymentCreateRequest):
             detail=result.get("responseMessage", "ABA Pay gateway error"),
         )
 
-    d = result.get("data") or {}
+    d = result.get("data") if isinstance(result.get("data"), dict) else result
+    qr_string, qr_image = _extract_qr_fields(result)
     return {
-        "transaction_id": d.get("transaction_id", payload.transaction_id),
-        "amount": d.get("amount", amount),
-        "qr": d.get("qr", ""),
-        "qr_url": d.get("qr_url", ""),
+        "transaction_id": d.get("transaction_id") or payload.transaction_id,
+        "amount": d.get("amount") or amount,
+        "qr": qr_string,
+        "qr_url": qr_image,
     }
 
 
@@ -319,34 +479,70 @@ async def create_order_payment(
     order_id: int,
     amount: float,
     remark: str,
+    items: Optional[List[Dict]] = None,
 ) -> Optional[Dict]:
-    """ហៅ Gateway ដើម្បីយក QR Code។ បរាជ័យ -> ត្រឡប់ None (ប្រើ Mock URL ដូចពីមុន)"""
+    """បង្កើតការបង់ប្រាក់សម្រាប់ Order មួយ៖
+
+    1. ទាញ **QR (EMV string + រូបភាព)** ពី KHQRcc QR API
+    2. បើ Gateway មិនផ្តល់រូបភាព → បង្កើតរូប QR ខ្លួនឯងពី EMV string (អតិថិជននៅតែឃើញ QR)
+    3. បង្កើត **Managed Checkout URL** ក្នុងម៉ាស៊ីន (មិនបាច់រង់ចាំ Gateway)
+
+    ដូច្នេះទោះ Gateway មានបញ្ហា/Timeout អតិថិជននៅតែអាចបង់ប្រាក់តាម Link ✓
+    """
     if not payment_configured():
         return None
+
+    transaction_id = f"ECOMM{order_id}-{uuid.uuid4().hex[:8]}"
+    amount_str = _fmt_amount(amount)
+    success_url = f"{settings.FRONTEND_URL}/order-success?order_id={order_id}"
+    cancel_url = f"{settings.FRONTEND_URL}/checkout"
+
+    # 1) QR ពី Gateway (QR API)
+    items_b64 = _encode_items(items)
+    custom_fields_b64 = _encode_custom_fields(
+        {"order_id": order_id, "remark": remark, "source": "web"}
+    )
+    qr_string, qr_image = "", ""
     try:
-        transaction_id = f"ECOMM{order_id}-{uuid.uuid4().hex[:8]}"
-        success_url = f"{settings.FRONTEND_URL}/order-success?order_id={order_id}"
         payload = schemas.PaymentCreateRequest(
             transaction_id=transaction_id,
             amount=amount,
             success_url=success_url,
             remark=remark,
+            cancel_url=cancel_url,
+            items=items_b64,
+            custom_fields=custom_fields_b64,
         )
-        d = await create_payment(payload)
-        # Redirect checkout URL (Managed Checkout) ជាជម្រើស
-        redirect_url = (
-            f"{KHQRCC_BASE}/api/payment/requestv2/{settings.KHQRCC_PROFILE_ID}"
-            f"?transaction_id={transaction_id}"
-            f"&amount={d['amount']}"
-            f"&success_url={success_url}"
-            f"&remark={remark}"
-            f"&hash={_sha1(settings.KHQRCC_SECRET_KEY, transaction_id, d['amount'], success_url, remark)}"
+        data = await create_payment(payload)
+        qr_string = data.get("qr") or ""
+        qr_image = data.get("qr_url") or ""
+    except HTTPException as exc:
+        logger.warning(f"QR API failed for order #{order_id}: {exc.detail}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            f"QR API unreachable for order #{order_id}: {type(exc).__name__}: {exc}"
         )
-        return {
-            "transaction_id": d["transaction_id"],
-            "qr_url": d.get("qr_url", ""),
-            "qr": d.get("qr", ""),
-            "url": redirect_url,
-        }
-    except Exception:
-        return None
+
+    # 2) បើគ្មានរូបភាព QR -> បង្កើតខ្លួនឯងពី EMV string
+    qr_image = _ensure_qr_image(qr_string, qr_image, transaction_id)
+
+    # 3) Checkout URLs (គណនាក្នុងម៉ាស៊ីន — ប្រើបានភ្លាម ទោះ Gateway ជាប់)
+    url_args = (
+        transaction_id,
+        amount_str,
+        success_url,
+        remark,
+        cancel_url,
+        items_b64,
+        custom_fields_b64,
+    )
+    redirect_url = build_redirect_url(*url_args)   # requestv2 (Plugin + Redirect)
+    checkout_url = build_checkout_url(*url_args)   # checkout.khqr.cc (ផ្ទាល់)
+
+    return {
+        "transaction_id": transaction_id,
+        "qr_url": qr_image,
+        "qr": qr_string,
+        "url": redirect_url,
+        "checkout_url": checkout_url,
+    }

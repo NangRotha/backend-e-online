@@ -124,11 +124,15 @@ async def checkout(
         product.stock -= qty
     db.commit()
 
-    # បង្កើត ABA Pay / KHQRcc Payment (QR Code) ដោយស្វ័យប្រវត្តិ
+    # បង្កើត ABA Pay / KHQRcc Payment (QR + Managed Checkout) ដោយស្វ័យប្រវត្តិ
     payment = await create_order_payment(
         order_id=new_order.id,
         amount=total,
         remark=f"Order #{new_order.id}",
+        items=[
+            {"name": product.name, "quantity": qty, "price": unit_price}
+            for product, qty, unit_price in purchased
+        ],
     )
     if payment:
         new_order.payment_ref = payment["transaction_id"]
@@ -136,6 +140,7 @@ async def checkout(
         # -> អតិថិជន Refresh ឬបើកទំព័រឡើងវិញក៏ឃើញ QR ដដែល (មិនបាត់)
         new_order.payment_qr_url = payment.get("qr_url") or ""
         new_order.payment_url = payment.get("url") or ""
+        new_order.payment_checkout_url = payment.get("checkout_url") or ""
         db.commit()
 
     # Redirect Checkout URL (ABA Pay Managed Checkout) — ប្រើជាជម្រើស
@@ -151,6 +156,7 @@ async def checkout(
         "total_amount": total,
         "status": "pending",
         "payment_url": payment_url,
+        "payment_checkout_url": payment["checkout_url"] if payment else "",
         "payment_enabled": payment is not None,
         "payment_transaction_id": payment["transaction_id"] if payment else None,
         "payment_qr_url": payment["qr_url"] if payment else None,
@@ -180,6 +186,7 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
         "payment_transaction_id": order.payment_ref,
         "payment_qr_url": order.payment_qr_url or None,
         "payment_url": order.payment_url or None,
+        "payment_checkout_url": order.payment_checkout_url or None,
         "payment_company_name": branding["company_name"],
         "payment_display_name": branding["display_name"],
         "payment_bakong_id": branding["bakong_id"],

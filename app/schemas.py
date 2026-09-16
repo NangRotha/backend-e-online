@@ -145,7 +145,8 @@ class CheckoutResponse(BaseModel):
     order_id: int
     total_amount: float
     status: str
-    payment_url: str = ""  # Redirect checkout (ABA Pay) — ប្រើបានបើ payment_enabled
+    payment_url: str = ""  # Redirect checkout (ABA Pay requestv2 — auto-redirect ទៅ Checkout)
+    payment_checkout_url: str = ""  # Frontend Checkout ផ្ទាល់ (checkout.khqr.cc)
     payment_enabled: bool = False  # បានភ្ជាប់ ABA Pay / KHQRcc ឬអត់
     payment_transaction_id: Optional[str] = None  # Transaction ID សម្រាប់ពិនិត្យស្ថានភាព
     payment_qr_url: Optional[str] = None  # រូប QR Code (PNG)
@@ -162,6 +163,9 @@ class PaymentCreateRequest(BaseModel):
     amount: float
     success_url: str
     remark: str = ""
+    cancel_url: str = ""      # ទៅណាពេលអតិថិជនបោះបង់ការបង់ប្រាក់ (optional)
+    items: str = ""           # Base64(JSON) នៃ Cart Items (optional)
+    custom_fields: str = ""   # Base64(JSON) ទិន្នន័យបន្ថែម ដែល Gateway ផ្ញើមកវិញ (optional)
 
 class PaymentCreateResponse(BaseModel):
     transaction_id: str

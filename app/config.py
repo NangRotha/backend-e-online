@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -6,6 +7,63 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ធ្វើបែបនេះ Backend អាចដំណើរការបានពី Directory ណាក៏បានដែរ
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BACKEND_DIR / ".env"
+
+# ============================================================
+# ពិនិត្យតម្លៃ Database URL ដែលមិនត្រឹមត្រូវ (Placeholder ពី .env.example)
+# ------------------------------------------------------------
+# បញ្ហាដែលធ្លាប់កើត៖ មានគេ Copy តម្លៃគំរូ `postgresql://USER:PASS@dpg-xxxx-a/DBNAME`
+# ដាក់ក្នុង Render Environment -> App Retry 10 ដងរួច Crash ("could not translate
+# host name dpg-xxxx-a")។ ដូច្នេះយើងច្រោះតម្លៃទាំងនោះចេញ ហើយប្រើ SQLite ឬ URL ផ្សេងជំនួស។
+#
+# ចំណាំ៖ Render Internal Hostname ជាទម្រង់ `dpg-abc123-a` (គ្មាន . ទេ) ដូច្នេះ
+# យើងពិនិត្យតែ Host/User/Pass/DB ដែលជាតម្លៃគំរូប៉ុណ្ណោះ។
+# ============================================================
+_VALID_PG_SCHEMES = ("postgres://", "postgresql://")
+_URL_PARTS_RE = re.compile(
+    r"^(?P<user>[^:@/]*)(?::(?P<pw>[^@]*))?@(?P<host>[^/?]+)(?:/(?P<db>[^?]*))?"
+)
+_USER_PLACEHOLDERS = {"user", "username", "your-user", "your_user", "youruser"}
+_PASS_PLACEHOLDERS = {"pass", "password", "your-password", "your_password", "yourpass"}
+_HOST_PLACEHOLDERS = {"host", "hostname", "your-host", "yourhost", "example.com"}
+_DB_PLACEHOLDERS = {"dbname", "your-db", "your_db", "yourdb", "database"}
+
+
+def is_usable_database_url(url: str) -> bool:
+    """URL ត្រឹមត្រូវសម្រាប់ប្រើឬអត់?
+
+    - ត្រូវមាន scheme ត្រឹមត្រូវ (postgres/postgresql/sqlite)
+    - មិនត្រូវមាន User/Pass/Host/DB ជាតម្លៃគំរូ
+      (ឧ. `dpg-xxxx-a`, `USER:PASS`, `DBNAME`, `HOST`)
+    - Render Internal Hostname ដូចជា `dpg-abc123-a` ត្រូវបានទទួលយក ✓
+    """
+    value = (url or "").strip()
+    if not value:
+        return False
+    if value.startswith("sqlite"):
+        return True
+    if not value.startswith(_VALID_PG_SCHEMES):
+        return False
+
+    match = _URL_PARTS_RE.match(value.split("://", 1)[1])
+    if not match:
+        return False
+
+    user = (match.group("user") or "").lower()
+    password = (match.group("pw") or "").lower()
+    host = (match.group("host") or "").lower()
+    dbname = (match.group("db") or "").lower()
+
+    if not user or not host:
+        return False
+    if user in _USER_PLACEHOLDERS or password in _PASS_PLACEHOLDERS:
+        return False
+    if host in _HOST_PLACEHOLDERS or re.match(r"^dpg-x+(-a)?$", host):
+        return False
+    if dbname in _DB_PLACEHOLDERS:
+        return False
+    return True
+
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -98,6 +156,35 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "https://frontend-user-e-online.vercel.app"
 
     @property
+    def clean_database_url(self) -> str:
+        """DATABASE_URL ដែលប្រើបាន (បើជាតម្លៃគំរូ/ខុស -> ទទេ)"""
+        value = (self.DATABASE_URL or "").strip()
+        return value if is_usable_database_url(value) else ""
+
+    @property
+    def clean_database_url_internal(self) -> str:
+        """DATABASE_URL_INTERNAL ដែលប្រើបាន (បើជាតម្លៃគំរូ/ខុស -> ទទេ)"""
+        value = (self.DATABASE_URL_INTERNAL or "").strip()
+        return value if is_usable_database_url(value) else ""
+
+    @property
+    def database_warnings(self) -> list:
+        """សារព្រមានអំពី Env Var Database ដែលខុស (បង្ហាញក្នុង Diagnostics)"""
+        warnings = []
+        for name, raw in (
+            ("DATABASE_URL", self.DATABASE_URL),
+            ("DATABASE_URL_INTERNAL", self.DATABASE_URL_INTERNAL),
+        ):
+            value = (raw or "").strip()
+            if value and not is_usable_database_url(value):
+                shown = value.split("@")[-1] if "@" in value else value
+                warnings.append(
+                    f"{name} មិនត្រឹមត្រូវ (មើលទៅជាតម្លៃគំរូ): …@{shown} — ត្រូវបានមិនគិត! "
+                    "សូមដាក់ URL ពិតពី Render → Postgres → Connect"
+                )
+        return warnings
+
+    @property
     def db_engine(self) -> str:
         """'sqlite' | 'postgres' | 'auto' (ធ្វើឱ្យ DB_ENGINE ត្រឹមត្រូវ)"""
         value = (self.DB_ENGINE or "auto").strip().lower()
@@ -109,33 +196,34 @@ class Settings(BaseSettings):
 
     @property
     def active_database_url(self) -> str:
-        """ជ្រើសរើស Database តាមលំដាប់អាទិភាព៖
+        """ជ្រើសរើស Database តាមលំដាប់អាទិភាព (ច្រោះ URL ដែលមិនត្រឹមត្រូវចេញ)៖
 
         1. `DB_ENGINE=sqlite`   → **SQLite** (SQLITE_PATH ឬ `backend/ecommerce.db`) — បង្ខំ
-        2. `DB_ENGINE=postgres` → PostgreSQL (`DATABASE_URL_INTERNAL` នៅលើ Render បើមាន)
+        2. `DB_ENGINE=postgres` → PostgreSQL (`DATABASE_URL_INTERNAL` ត្រឹមត្រូវ បើមាន → `DATABASE_URL`)
         3. `DB_ENGINE=auto` (Default)៖
-           - នៅលើ Render + មាន `DATABASE_URL_INTERNAL` → PostgreSQL (Internal)
-           - បើកំណត់ `DATABASE_URL` → តាម URL នោះ
-           - បើគ្មានទាំងពីរ → **SQLite** (`backend/ecommerce.db`)
+           - នៅលើ Render + `DATABASE_URL_INTERNAL` ត្រឹមត្រូវ → PostgreSQL (Internal)
+           - បើ `DATABASE_URL` ត្រឹមត្រូវ → តាម URL នោះ
+           - បើគ្មាន URL ត្រឹមត្រូវ → **SQLite** (App មិន Crash ទេ តែបង្ហាញ WARNING)
         """
         engine = self.db_engine
+        on_render = self.RENDER.lower() == "true"
 
         if engine == "sqlite":
             return f"sqlite:///{self.sqlite_file_path}"
 
         if engine == "postgres":
-            if self.RENDER.lower() == "true" and self.DATABASE_URL_INTERNAL:
-                return self.DATABASE_URL_INTERNAL
-            if self.DATABASE_URL:
-                return self.DATABASE_URL
-            # បើគ្មាន URL -> ប្រើ SQLite ជំនួស (ព្រមានក្នុង Startup Diagnostics)
+            if on_render and self.clean_database_url_internal:
+                return self.clean_database_url_internal
+            if self.clean_database_url:
+                return self.clean_database_url
+            # បើគ្មាន URL ត្រឹមត្រូវ -> SQLite (ព្រមានក្នុង Startup Diagnostics)
             return f"sqlite:///{self.sqlite_file_path}"
 
         # auto
-        if self.RENDER.lower() == "true" and self.DATABASE_URL_INTERNAL:
-            return self.DATABASE_URL_INTERNAL
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
+        if on_render and self.clean_database_url_internal:
+            return self.clean_database_url_internal
+        if self.clean_database_url:
+            return self.clean_database_url
         return f"sqlite:///{self.sqlite_file_path}"
 
     @property

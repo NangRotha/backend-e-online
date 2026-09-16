@@ -117,12 +117,14 @@ def _deploy_diagnostics():
 
     # ⚠️ DB_ENGINE=postgres តែគ្មាន DATABASE_URL → បាន Fallback ទៅ SQLite
     if app_settings.db_engine == "postgres" and not (
-        app_settings.DATABASE_URL or app_settings.DATABASE_URL_INTERNAL
+        app_settings.clean_database_url or app_settings.clean_database_url_internal
     ):
         warnings.append(
-            "DB_ENGINE=postgres ប៉ុន្តែគ្មាន DATABASE_URL — ប្រព័ន្ធបានប្តូរទៅ SQLite វិញ។ "
-            "សូមកំណត់ DATABASE_URL ឬដាក់ DB_ENGINE=sqlite ឱ្យច្បាស់"
+            "DB_ENGINE=postgres ប៉ុន្តែគ្មាន DATABASE_URL ត្រឹមត្រូវ — ប្រព័ន្ធបានប្តូរទៅ SQLite វិញ"
         )
+
+    # ⚠️ Env Var Database ដែលមានតម្លៃគំរូ (ឧ. dpg-xxxx-a) -> មិនគិត
+    warnings.extend(app_settings.database_warnings)
 
     # ⚠️ SQLite លើ Render ត្រូវការ Persistent Disk មិនដូច្នេះទិន្នន័យនឹងបាត់
     if on_render and IS_SQLITE:
