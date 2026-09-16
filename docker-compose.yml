@@ -1,0 +1,46 @@
+# ============================================================
+# Docker Compose — រត់ Backend (FastAPI + SQLite) ក្នុងម៉ាស៊ីនរបស់អ្នក
+# ------------------------------------------------------------
+# ប្រើ៖
+#   docker compose up --build -d          # ចាប់ផ្តើម  -> http://localhost:8000
+#   docker compose logs -f backend        # មើល Log
+#   docker compose down                   # បិទ
+#   docker compose exec backend python create_admin.py admin@example.com --password 'admin12345'
+#   docker compose exec backend python scripts/backup_restore.py --help
+#
+# ទិន្នន័យ (ecommerce.db + uploads) រក្សាទុកក្នុងថត `data/` ខាងក្រៅ Container
+# ដូច្នេះ Container បិទ/បង្កើតឡើងវិញ ក៏ទិន្នន័យមិនបាត់ ✓
+#
+# ⚙️ Env Var ផ្សេងទៀត (SMTP · KHQRCC · UploadThing · ADMIN_*) អានពី `.env`
+#    ដែលអ្នកចម្លងពី `.env.example` (មិនចាំបាច់កែ File នេះ)
+# ============================================================
+services:
+  backend:
+    build: .
+    image: backend-e-online:latest
+    container_name: backend-e-online
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # SQLite + Uploads នៅក្នុងថត `data/` ខាងក្រៅ (gitignored)
+      - ./data:/var/data
+    # `.env` ជាជម្រើស — បើគ្មាន ក៏ Container នៅតែដំណើរការ (ប្រើ Default ក្នុងកូដ)
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # ⚠️ Override លើ `.env` — ធានាថា DB/Uploads នៅក្នុង Volume ជានិច្ច
+      PORT: "8000"
+      SQLITE_PATH: /var/data/ecommerce.db
+      UPLOAD_DIR: /var/data/uploads
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

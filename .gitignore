@@ -1,5 +1,6 @@
 # Environment (កុំ commit ឯកសារដែលមាន password)
 .env
+.env.local
 
 # Uploaded images
 uploads/
@@ -8,6 +9,9 @@ uploads/
 *.db
 *.sqlite3
 *.db-journal
+
+# Docker — Local volume (SQLite + uploads រក្សាទុកក្នុងថតនេះ)
+data/
 
 # Python
 __pycache__/

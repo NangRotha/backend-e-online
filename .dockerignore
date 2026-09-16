@@ -1,0 +1,37 @@
+# ============================================================
+# .dockerignore — ឯកសារដែលមិនត្រូវចូលក្នុង Docker Image
+# (ធ្វើឱ្យ Image តូច + Build លឿន + កុំលេច Secret)
+# ============================================================
+
+# Git / IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Environment — ⚠️ មិនត្រូវដាក់ Secret ក្នុង Image ទេ
+.env
+.env.local
+.env.*.local
+
+# Database + Uploads (រក្សាទុកក្នុង Volume/External ជំនួស)
+*.db
+*.sqlite3
+*.db-journal
+uploads/
+data/
+
+# Deploy / Docs (មិនចាំបាច់ក្នុង Image)
+README.md
+render.yaml
+Procfile
+vercel.json
+backup.json

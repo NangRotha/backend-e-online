@@ -7,6 +7,7 @@ Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដ�
 
 - **FastAPI** + **Uvicorn** (WebSocket real-time ផងដែរ)
 - **SQLAlchemy** + **SQLite** (Database តែមួយ — គ្មាន Driver បន្ថែម)
+- **🐳 Docker** (`Dockerfile` + `docker-compose.yml`) — Python 3.12-slim
 - JWT Auth (Admin), KHQR / ABA Pay, DeepSeek AI Chat, UploadThing/Cloudinary
 - **SQLite តែមួយប៉ុណ្ណោះ** — Migration រត់ស្វ័យប្រវត្តិ (Column/Index ថ្មី)
 
@@ -43,6 +44,53 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 - ឯកសារ Database: `backend-e-online/ecommerce.db` (gitignored)
 - ចង់ប្តូរទីតាំង → `SQLITE_PATH=/var/data/ecommerce.db`
 - ចង់ Reset Database → លុបឯកសារ `.db` ចោល រួច Restart (តារាងនឹងបង្កើតឡើងវិញ)
+
+### 🐳 Docker — រត់ក្នុងម៉ាស៊ីន (ឬ Deploy លើ Render)
+
+Repo នេះមាន **`Dockerfile`** (Python 3.12-slim) និង **`docker-compose.yml`**
+ដែលកំណត់ SQLite + Uploads នៅ **`/var/data`** ខាងក្នុង Container។
+
+**ជម្រើស A — Docker Compose (ណែនាំសម្រាប់ Local)**
+
+```bash
+cd backend-e-online
+cp .env.example .env            # (ជាជម្រើស) បំពេញ SECRET_KEY / ADMIN_* / KHQRCC_* ...
+docker compose up --build -d    # -> http://localhost:8000
+docker compose logs -f backend  # មើល Log
+docker compose down             # បិទ
+```
+
+- ទិន្នន័យ (SQLite + uploads) ស្ថិតក្នុងថត **`data/`** ខាងក្រៅ Container
+  → `docker compose down`/Build ឡើងវិញ ក៏ទិន្នន័យមិនបាត់ ✓
+- ពិនិត្យ៖ `curl http://localhost:8000/health`
+- ពាក្យបញ្ជាក្នុង Container (Admin / Backup)៖
+  ```bash
+  docker compose exec backend python create_admin.py admin@example.com --password 'admin12345'
+  docker compose exec backend python scripts/backup_restore.py --help
+  ```
+
+**ជម្រើស B — Docker ធម្មតា**
+
+```bash
+docker build -t backend-e-online .
+docker run -d --name backend -p 8000:8000 -v backend_data:/var/data \
+    -e ADMIN_EMAIL=admin@example.com -e ADMIN_PASSWORD='admin12345' \
+    backend-e-online
+```
+
+**Env Var ក្នុង Container** (កំណត់រួចក្នុង `Dockerfile`)
+
+| Env Var | Default | ចំណាំ |
+| --- | --- | --- |
+| `SQLITE_PATH` | `/var/data/ecommerce.db` | Volume ត្រូវ mount នៅ `/var/data` |
+| `UPLOAD_DIR` | `/var/data/uploads` | ដូចខាងលើ (ឬប្រើ `UPLOADTHING_TOKEN`) |
+| `PORT` | `8000` | Render កំណត់ដោយស្វ័យប្រវត្តិ |
+
+> ⚠️ `.env` មិនចូលក្នុង Image ទេ (មើល `.dockerignore`) — បើចង់ផ្ញើ Env ចូល Container
+> ត្រូវប្រើ `--env-file .env`, `-e KEY=value`, ឬ `env_file:` ក្នុង `docker-compose.yml`។
+>
+> 💡 Image មិនរាប់បញ្ចូល `*.db` / `uploads/` / `.venv` / `.env` → តូចលឿន (≈ 88 MB)
+> និងគ្មាន Secret នៅក្នុង Image។
 
 ### 🖥️ ប្រើ SQLite លើ Render (Production)
 
@@ -321,10 +369,10 @@ Env vars ដែលត្រូវការ៖
 
 | ចំណុច | ហេតុអ្វី |
 | --- | --- |
-| **Build Command** = `pip install -r requirements.txt` | `uvicorn[standard]` ត្រូវបានដំឡើង → មាន `websockets` សម្រាប់ Real-time |
-| **Start Command** = `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'` | `--workers 1` ព្រោះ WebSocket manager ស្ថិតក្នុង Memory · `--proxy-headers` ព្រោះ Render ជា Reverse Proxy |
-| **Health Check Path** = `/health` | Render ដឹងថា Service ដំណើរការ |
-| **Python Version** = ឯកសារ `.python-version` (= `3.12`) ឬ Env Var `PYTHON_VERSION=3.12.10` (Manual) | Render default ថ្មីគឺ **3.14** → បណ្ណាល័យខ្លះគ្មាន wheel · ⚠️ **មិនត្រូវដាក់ `pythonVersion:` ក្នុង `render.yaml`** (Schema បដិសេធ → Deploy Error) |
+| **Runtime** = `docker` 🐳 | Render Build តាម `Dockerfile` — **មិនត្រូវការ** Build Command / Start Command ក្នុង Dashboard |
+| **Dockerfile Path** = `./Dockerfile` | កំណត់រួចក្នុង `render.yaml` (`dockerfilePath`) |
+| **Health Check Path** = `/health` | Render ដឹងថា Service ដំណើរការ (`render.yaml` + `HEALTHCHECK` ក្នុង Dockerfile) |
+| **Python Version** = `3.12` (ក្នុង `Dockerfile`) | 🐳 Docker ជ្រើស Python ខ្លួនឯង → **មិនត្រូវការ `PYTHON_VERSION`** ទេ (បើប្រើ Runtime ធម្មតា ត្រូវពឹងលើ `.python-version`) |
 | **Environment** = Production | បើក `SECRET_KEY`, `CORS_ORIGINS`, `KHQRCC_*`, `FRONTEND_URL`, `BREVO_API_KEY`, `UPLOADTHING_TOKEN` — 🚫 **មិនត្រូវការ `DATABASE_URL` ទៀតទេ** |
 | **មិន Scale ច្រើន Instance** | WebSocket real-time ត្រូវការ Single Instance (បើចង់ Scale ត្រូវប្រើ Redis Pub/Sub) |
 | **Admin ដំបូង** | ដាក់ `ADMIN_EMAIL` + `ADMIN_PASSWORD` — បង្កើតឱ្យស្វ័យប្រវត្តិពេល Startup (ចាំបាច់ព្រោះ Free គ្មាន Shell) |
@@ -333,7 +381,7 @@ Env vars ដែលត្រូវការ៖
 
 | ចំណុច | លើ Free Plan | ដំណោះស្រាយក្នុង Repo នេះ |
 | --- | --- | --- |
-| **Persistent Disk** | ❌ គ្មាន → `/var/data` បង្កើតមិនបាន | ទុក `SQLITE_PATH`/`UPLOAD_DIR` ទទេ → DB និងរូប ស្ថិតក្នុង Service Folder (Ephemeral) · ប្រើ `UPLOADTHING_TOKEN` ដើម្បីកុំបាត់រូប |
+| **Persistent Disk** | ❌ គ្មាន → data នៅក្នុង Container (Ephemeral) | 🐳 Docker ប្រើ `/var/data` ក្នុង Container — បាត់ពេល Redeploy · រូបភាពប្រើ `UPLOADTHING_TOKEN` · ចង់ទិន្នន័យមិនបាត់ → **OPTION B** (Disk mount នៅ `/var/data`) |
 | **Shell / SSH** | ❌ គ្មាន → រត់ `create_admin.py` មិនបាន | **Bootstrap Admin**: `ADMIN_EMAIL` + `ADMIN_PASSWORD` (បង្កើតពេល Startup) |
 | **One-off Job** | ❌ មិនគាំទ្រ | បំពេញទិន្នន័យតាម Admin Panel (ឬប្តូរទៅ Plan បង់) |
 | **SMTP port 587/465** | ❌ បិទ (Outbound Blocked) | ប្រើ `BREVO_API_KEY` (HTTP API លើ port 443) — កូដជ្រើស Brevo ជាមុនស្វ័យប្រវត្តិ |
@@ -377,9 +425,9 @@ curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
 
 ### វិធីទី 1 — Blueprint (render.yaml) ស្វ័យប្រវត្តិ
 
-1. Push code ទៅ GitHub (ត្រូវមាន `render.yaml` និង `requirements.txt` នៅក្នុង folder នេះ)
+1. Push code ទៅ GitHub (ត្រូវមាន `Dockerfile` · `render.yaml` · `requirements.txt` នៅ root)
 2. Render Dashboard → **New → Blueprint**
-3. ជ្រើស repo នេះ → Render បង្កើត Web Service ដោយស្វ័យប្រវត្តិ
+3. ជ្រើស repo នេះ → Render បង្កើត Web Service (**Runtime: Docker** 🐳) ដោយស្វ័យប្រវត្តិ
 4. ចូល **Service → Environment** ហើយបំពេញអថេរទាំងនេះ (ដែលមាន `sync: false` ក្នុង `render.yaml`)៖
 
 | Env Var | តម្រូវ? | ឧទាហរណ៍ / កន្លែងយក |
@@ -406,10 +454,10 @@ curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | ជម្រើស | Cloudinary Dashboard → API Keys (ជំនួស UploadThing) |
 | `DEEPSEEK_API_KEY` | ជម្រើស (AI Chat) | https://platform.deepseek.com |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` | ជម្រើស | @BotFather (Storefront លែងប្រើ Telegram login ទៀតទេ) |
-| `UPLOAD_DIR` | ជម្រើស | ទុកទទេ (backend/uploads) ឬ `/var/data/uploads` បើមាន Persistent Disk |
-| `PYTHON_VERSION` | ✅ បើបង្កើត Manual | `3.12.10` (ត្រូវជា version ពេញលេញ) — ⚠️ **Blueprint មិនត្រូវដាក់ `pythonVersion:` ទេ** ព្រោះ Render បដិសេធ (ប្រើឯកសារ `.python-version` ជំនួស) |
+| `UPLOAD_DIR` | ជម្រើស | 🐳 Docker Default: `/var/data/uploads` (កំណត់ក្នុង Dockerfile) · Local ធម្មតា: `backend/uploads` |
+| `PYTHON_VERSION` | 🚫 មិនត្រូវការ (Docker) | 🐳 Python កំណត់ក្នុង `Dockerfile` (`python:3.12-slim`) — ប្រើតែពេល Runtime = Python ធម្មតា (`3.12.10`) |
 | `CORS_ORIGIN_REGEX` | ជម្រើស | Regex សម្រាប់ Vercel Preview (ឧ. `^https://frontend-.*\.vercel\.app$`) |
-| `SQLITE_PATH` | ត្រូវការតែពេលមាន Persistent Disk | `var/data/ecommerce.db` (Starter + OPTION B) · បើទុកទទេលើ Free → DB នៅក្នុង Service Folder (បាត់ពេល Redeploy) |
+| `SQLITE_PATH` | ជម្រើស | 🐳 Docker Default: `/var/data/ecommerce.db` (កំណត់ក្នុង Dockerfile) · Local ធម្មតា: ទុកទទេ → `backend-e-online/ecommerce.db` |
 | `OTP_EXPIRE_MINUTES` | ជម្រើស | `10` |
 
 > **Render កំណត់ដោយស្វ័យប្រវត្តិ (មិនត្រូវបំពេញដោយដៃ)៖**
@@ -422,22 +470,25 @@ curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
 > **RENDER** ត្រូវបាន Render កំណត់ដោយស្វ័យប្រវត្តិ (`RENDER=true`) —
 > code ប្រើវាសម្រាប់ Startup Diagnostics និងការព្រមានអំពី Persistent Disk។
 
-> **Python Version:** Render default ថ្មីគឺ **3.14** (មិនទាន់មាន wheel សម្រាប់
-> បណ្ណាល័យខ្លះទេ) — ដូច្នេះ repo នេះប្រើ **Python 3.12**។
-> - **Blueprint (render.yaml)៖** Render អានឯកសារ `.python-version` នៅ root (= `3.12`)
->   ⚠️ **កុំដាក់ `pythonVersion:`** ក្នុង `render.yaml` — វាមិនមែន Key ត្រឹមត្រូវទេ
->   (Schema កំណត់ `additionalProperties: false`) → Blueprint នឹង Error ពេល Deploy
-> - **Manual Web Service៖** ដាក់ Env Var `PYTHON_VERSION=3.12.10` (ត្រូវជា version ពេញលេញ)
->   ឬទុកឱ្យ Render អាន `.python-version` ក៏បាន
+> **Python Version (🐳 Docker):** កំណត់ក្នុង `Dockerfile` = **`python:3.12-slim`**
+> → **មិនត្រូវការ Env Var `PYTHON_VERSION`** ទេ (Blueprint ក៏មិនត្រូវការដែរ)
+> ⚠️ **កុំដាក់ `pythonVersion:`** ក្នុង `render.yaml` — មិនមែន Key ត្រឹមត្រូវទេ
+> (Schema កំណត់ `additionalProperties: false`) → Blueprint នឹង Error ពេល Deploy
+> 💡 បើប្រើ Runtime `python` ធម្មតា (មិនមែន Docker)៖ ដាក់ `.python-version` = `3.12`
+> ឬ Env Var `PYTHON_VERSION=3.12.10` (ត្រូវជា version ពេញលេញ) — Render default ថ្មីជាងនេះមាន 3.14
 
-### វិធីទី 2 — Web Service (Manual)
+### វិធីទី 2 — Web Service (Manual) 🐳 Docker
 
 1. Render Dashboard → **New → Web Service** → ជ្រើស repo
-2. **Build Command:** `pip install -r requirements.txt`
-3. **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   (ឬ Render អាន `Procfile` ដោយស្វ័យប្រវត្តិ)
-4. **Health Check Path:** `/health`
-5. បំពេញ Env Vars ដូចតារាងខាងលើ
+2. **Language / Runtime:** **Docker** (ជ្រើស "Docker" មិនមែន Python)
+3. **Dockerfile Path:** `./Dockerfile`
+4. **Build / Start Command:** ទុកទទេ — Render ប្រើ `Dockerfile` (`CMD` + `HEALTHCHECK`)
+5. **Health Check Path:** `/health`
+6. **Docker Command:** ទុកទទេ (បើចង់ override សូមប្រើ
+   `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers`)
+7. បំពេញ Env Vars ដូចតារាងខាងលើ (មិនត្រូវការ `PYTHON_VERSION` / `DATABASE_URL`)
+8. (ស្រេចចិត្ត) បន្ថែម **Persistent Disk** → Mount Path = `/var/data` (Plan Starter ឡើងទៅ)
+   → SQLite + Uploads នឹងនៅក្នុង Disk ដោយស្វ័យប្រវត្តិ ✓
 
 ### ក្រោយ Deploy
 

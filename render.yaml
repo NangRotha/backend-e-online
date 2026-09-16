@@ -1,21 +1,23 @@
 # ============================================================
-# Render Blueprint — Deploy Backend (FastAPI) លើ Render
+# Render Blueprint — Deploy Backend (FastAPI) លើ Render — 🐳 Docker
 # ============================================================
+# 🐳 Runtime = **Docker** (`Dockerfile` ក្នុង repo នេះ) — Python 3.12-slim
+#    ដូច្នេះមិនត្រូវការ Env Var `PYTHON_VERSION` ទេ (កំណត់ក្នុង Dockerfile)
+#
 # 🗄️  Database = **SQLite តែមួយប៉ុណ្ណោះ** (គ្មាន PostgreSQL ទៀតទេ)
-#     • Free plan  → ឯកសារ DB ស្ថិតក្នុង Service Folder (Ephemeral)
+#     • Free plan  → `/var/data` នៅក្នុង Container (Ephemeral)
 #                    ⚠️ ទិន្នន័យបាត់ពេល Redeploy/Restart (ល្មមសម្រាប់សាកល្បង)
-#     • Starter+   → ដោះ Comment `disk:` + `SQLITE_PATH` + `UPLOAD_DIR` (OPTION B)
-#                    ទិន្នន័យ និងរូបភាព **មិនបាត់** ពេល Redeploy
+#     • Starter+   → ដោះ Comment `disk:` ខាងក្រោម (mount នៅ `/var/data`)
+#                    ទិន្នន័យ និងរូបភាព **មិនបាត់** ពេល Redeploy ✓
+#                    (Dockerfile កំណត់ SQLITE_PATH/UPLOAD_DIR = /var/data រួចហើយ)
 #
 # ⚠️ ចំណាំសំខាន់:
+#    • មិនត្រូវការ `DATABASE_URL` / `DB_ENGINE` ទៀតទេ — Backend ប្រើ SQLite ជានិច្ច
 #    • Render **មិនគាំទ្រ key `pythonVersion`** ក្នុង render.yaml ទេ
 #      (Schema កំណត់ `additionalProperties: false` → Blueprint នឹងត្រូវបដិសេធ)
-#      → Python Version កំណត់ដោយឯកសារ `.python-version` នៅ root (= 3.12)
-#        ឬ Env Var `PYTHON_VERSION=3.12.10` (សម្រាប់ Manual Web Service តែប៉ុណ្ណោះ)
-#    • មិនត្រូវការ `DATABASE_URL` / `DB_ENGINE` ទៀតទេ — Backend ប្រើ SQLite ជានិច្ច
 #
 # របៀបប្រើ:
-#   1. Push code ទៅ GitHub (`render.yaml` + `requirements.txt` + `.python-version` នៅ root)
+#   1. Push code ទៅ GitHub (`Dockerfile` + `render.yaml` + `requirements.txt` នៅ root)
 #   2. Render Dashboard -> New -> Blueprint -> ជ្រើស repo នេះ
 #   3. បំពេញ Env Var ដែលមាន `sync: false` (SECRET_KEY បង្កើតដោយស្វ័យប្រវត្តិ)
 #   4. **Admin ដំបូង**: ដាក់ `ADMIN_EMAIL` + `ADMIN_PASSWORD` → បង្កើតពេល Startup
@@ -29,23 +31,23 @@
 services:
   - type: web
     name: backend-e-online
-    runtime: python
-    # ⚠️ មិនដាក់ `pythonVersion:` ទេ — Blueprint Schema បដិសេធ (additionalProperties: false)
-    #    Python Version កំណត់ដោយឯកសារ `.python-version` (= 3.12) នៅ root នៃ repo
+    runtime: docker                        # 🐳 Docker — Build តាម Dockerfile ក្នុង repo នេះ
+    dockerfilePath: ./Dockerfile
     region: singapore          # ជិតកម្ពុជាជាងគេ (oregon · ohio · virginia · frankfurt · singapore)
     # ⚠️ បើ Service មានរួច ហើយនៅ Region ផ្សេង → Render មិនអនុញ្ញាតប្តូរ Region ទេ
     #    (ត្រូវបង្កើត Service ថ្មី ឬលុបបន្ទាត់ `region:` នេះចេញ)
+    # ℹ️ ប្តូរពី `runtime: python` → `docker`៖ ត្រូវបង្កើត Service ថ្មី ឬកំណត់
+    #    Settings -> Runtime = Docker ក្នុង Dashboard
     plan: free                 # ប្តូរទៅ `starter` បើចង់បន្ថែម Persistent Disk (OPTION B)
     autoDeploy: true
-    buildCommand: pip install -r requirements.txt
-    # --workers 1 : WebSocket manager ស្ថិតក្នុង Memory -> ត្រូវការ Single Instance
-    # --proxy-headers : Render ជា Reverse Proxy (ត្រូវអាន X-Forwarded-*)
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'
+    # ℹ️ Docker មិនត្រូវការ `buildCommand`/`startCommand` ទេ — កំណត់ក្នុង Dockerfile
+    #    (CMD: uvicorn --port $PORT --workers 1 --proxy-headers)
     healthCheckPath: /health
 
     # ============================================================
     # OPTION B — Persistent Disk (ត្រូវការ Plan `starter` ឡើងទៅ · Free មិនគាំទ្រ)
-    # ដោះ Comment ៤ បន្ទាត់ខាងក្រោម + ដោះ Comment `SQLITE_PATH`/`UPLOAD_DIR` ក្នុង envVars
+    # 🐳 Docker: ដោះ Comment ៤ បន្ទាត់ខាងក្រោមតែប៉ុណ្ណោះ — គ្មានត្រូវកែ Env Var ទេ
+    # (Dockerfile ENV កំណត់ `SQLITE_PATH` និង `UPLOAD_DIR` = /var/data រួចហើយ)
     # ============================================================
     # disk:
     #   name: data
@@ -55,11 +57,11 @@ services:
       # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ
       - key: SECRET_KEY
         generateValue: true
-      # 🗄️ Database = SQLite (គ្មាន `DATABASE_URL` / `DB_ENGINE` ទៀតទេ)
-      # Free plan គ្មាន Disk -> ឯកសារ DB ស្ថិតក្នុង Service Folder (Ephemeral)
+      # 🗄️ Database = SQLite (កំណត់ក្នុង Dockerfile: SQLITE_PATH=/var/data/ecommerce.db)
+      # Free plan គ្មាន Disk -> /var/data នៅក្នុង Container (Ephemeral)
       # ⚠️ ទិន្នន័យបាត់ពេល Redeploy/Restart — ប្រើ OPTION B (Disk) ដើម្បីកុំបាត់
       #
-      # OPTION B (Starter + Disk) — ដោះ Comment ២ ប្លុកខាងក្រោម + `disk:` ខាងលើ
+      # (ជម្រើស) បើចង់ override ទីតាំង DB/Uploads ដោយខ្លួនឯង — ដោះ Comment ខាងក្រោម:
       # - key: SQLITE_PATH
       #   value: /var/data/ecommerce.db
       # - key: UPLOAD_DIR
