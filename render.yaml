@@ -33,6 +33,8 @@ services:
     # ⚠️ មិនដាក់ `pythonVersion:` ទេ — Blueprint Schema បដិសេធ (additionalProperties: false)
     #    Python Version កំណត់ដោយឯកសារ `.python-version` (= 3.12) នៅ root នៃ repo
     region: singapore          # ជិតកម្ពុជាជាងគេ (oregon · ohio · virginia · frankfurt · singapore)
+    # ⚠️ បើ Service មានរួច ហើយនៅ Region ផ្សេង → Render មិនអនុញ្ញាតប្តូរ Region ទេ
+    #    (ត្រូវបង្កើត Service ថ្មី ឬលុបបន្ទាត់ `region:` នេះចេញ)
     plan: free                 # ប្តូរទៅ `starter` បើចង់បន្ថែម Persistent Disk (OPTION B)
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
