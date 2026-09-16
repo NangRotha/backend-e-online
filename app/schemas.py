@@ -136,6 +136,7 @@ class CheckoutRequest(BaseModel):
     shipping_address: str = ""
     customer_name: Optional[str] = None   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
     customer_phone: Optional[str] = None  # លេខទូរសព្ទ
+    customer_email: Optional[str] = None  # អ៊ីមែល (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
     note: Optional[str] = None            # កំណត់ចំណាំ (optional)
 
 class CheckoutResponse(BaseModel):
@@ -147,6 +148,12 @@ class CheckoutResponse(BaseModel):
     payment_transaction_id: Optional[str] = None  # Transaction ID សម្រាប់ពិនិត្យស្ថានភាព
     payment_qr_url: Optional[str] = None  # រូប QR Code (PNG)
     payment_qr: Optional[str] = None  # ខ្សែអក្សរ EMV (បើចង់ Render QR ដោយខ្លួនឯង)
+    # ព័ត៌មាន Bakong Wallet (ពី Site Settings — Admin កំណត់ក្នុង Settings)
+    payment_company_name: Optional[str] = None   # Company Name (ចំណងជើងលើ Checkout)
+    payment_display_name: Optional[str] = None   # ឈ្មោះអ្នកទទួលប្រាក់ (បង្ហាញលើ Bakong)
+    payment_bakong_id: Optional[str] = None      # Bakong Wallet ID (គណនីផ្ទេរប្រាក់)
+    currency: str = "USD"                        # USD | KHR
+    khr_rate: float = 4100                       # អត្រាប្តូរប្រាក់ (៛ ក្នុង ១ ដុល្លារ)
 
 class PaymentCreateRequest(BaseModel):
     transaction_id: str

@@ -9,7 +9,8 @@ from typing import Optional, Dict
 from .. import models, schemas
 from ..database import get_db
 from ..config import settings
-from ..email_sender import smtp_configured, send_order_receipt_email
+from ..email_sender import smtp_configured, brevo_api_configured, send_order_receipt_email
+from ..ws_manager import broadcast_orders_changed
 
 router = APIRouter(prefix="/api/payments", tags=["ABA Pay (KHQRcc)"])
 
@@ -54,10 +55,18 @@ def _verify_api_url() -> str:
 # Public: ពិនិត្យថាបានបើក ABA Pay / KHQRcc ឬអត់
 # ============================================================
 @router.get("/config")
-def payment_config():
+def payment_config(db: Session = Depends(get_db)):
+    """ព័ត៌មាន Payment សម្រាប់ Storefront (Checkout + Order Success)
+
+    រួមទាំងព័ត៌មាន Bakong Wallet ដែល Admin កំណត់ក្នុង Settings៖
+    Company Name / Display Name / Bakong Wallet ID / Currency (+ KHR rate)"""
+    from .orders import payment_branding  # import ក្នុង Function ដើម្បីកុំឱ្យ Circular Import
+
+    branding = payment_branding(db)
     return {
         "enabled": payment_configured(),
         "provider": "aba_khqrcc",
+        **branding,
     }
 
 
@@ -253,8 +262,10 @@ def _load_order_receipt_data(db: Session, order: models.Order) -> dict:
         round(subtotal - order.total_amount, 2) if subtotal > order.total_amount else 0.0
     )
     site_map = {s.key: s.value for s in db.query(models.SiteSetting).all()}
+    # អ៊ីមែលទទួល Receipt: អ៊ីមែលអតិថិជន (Guest Checkout) មុន បន្ទាប់មកអ៊ីមែលគណនី
+    to_email = (order.customer_email or "").strip() or (user.email if user else None)
     return {
-        "to_email": user.email if user else None,
+        "to_email": to_email,
         "data": {
             "site_name": site_map.get("site_name")
             or settings.SMTP_FROM_NAME
@@ -287,9 +298,12 @@ def _mark_paid_and_notify(
         return False
     order.status = "paid"
     db.commit()
+    # Real-time: Admin និង Storefront ទទួលដំណឹងភ្លាមៗថា Order បានបង់ប្រាក់រួច
+    background_tasks.add_task(broadcast_orders_changed)
     try:
         info = _load_order_receipt_data(db, order)
-        if info["to_email"] and smtp_configured():
+        # គាំទ្រទាំង Brevo HTTP API និង SMTP (email_sender ជ្រើសរើសខ្លួនឯង)
+        if info["to_email"] and (smtp_configured() or brevo_api_configured()):
             background_tasks.add_task(
                 send_order_receipt_email, info["to_email"], info["data"]
             )

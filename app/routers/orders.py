@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_user_optional
+from ..ws_manager import broadcast_orders_changed
 from .payments import create_order_payment
 import uuid
 
@@ -16,11 +17,39 @@ def _effective_price(product: models.Product) -> float:
         return round(product.price * (1 - product.sale_percent / 100), 2)
     return product.price
 
+
+def payment_branding(db: Session) -> dict:
+    """អានព័ត៌មាន Bakong Wallet / Payment ពី Site Settings
+    (Admin កំណត់ក្នុង Admin Panel -> Settings -> Bakong Wallet)
+
+    - payment_company_name → ចំណងជើងលើផ្ទាំង Checkout
+    - payment_display_name → ឈ្មោះអ្នកទទួលប្រាក់ (បង្ហាញលើ Bakong Wallet)
+    - payment_bakong_id    → Bakong Wallet ID (លេខគណនីផ្លូវការ)
+    - payment_currency     → USD | KHR  និង payment_khr_rate (អត្រាប្តូរប្រាក់)
+    """
+    rows = {s.key: s.value for s in db.query(models.SiteSetting).all()}
+    site_name = rows.get("site_name") or ""
+    try:
+        khr_rate = float(rows.get("payment_khr_rate") or 4100)
+    except (TypeError, ValueError):
+        khr_rate = 4100.0
+    if khr_rate <= 0:
+        khr_rate = 4100.0
+    return {
+        "company_name": rows.get("payment_company_name") or site_name,
+        "display_name": rows.get("payment_display_name") or site_name,
+        "bakong_id": rows.get("payment_bakong_id") or "",
+        "currency": (rows.get("payment_currency") or "USD").upper(),
+        "khr_rate": khr_rate,
+    }
+
 @router.post("/checkout", response_model=schemas.CheckoutResponse)
 async def checkout(
     order: schemas.CheckoutRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),  # យក User ID ពី JWT
+    # Guest Checkout — អតិថិជនអត់ចាំបាច់ Login (Token ជាជម្រើស)
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     # ប្រើ `items` (Cart) ឬ Single product (`product_id` + `quantity`) សម្រាប់ Backward Compatibility
     if order.items:
@@ -62,14 +91,21 @@ async def checkout(
     total = round(total, 2)
 
     # បង្កើត Order ក្នុង Database
+    # (Guest: user_id = None — Order ភ្ជាប់តាមលេខទូរសព្ទ/អ៊ីមែលជំនួសវិញ)
+    customer_email = (order.customer_email or "").strip()
+    if not customer_email and current_user:
+        customer_email = current_user.email or ""
+    profile_name = current_user.name if current_user else ""
+
     new_order = models.Order(
-        user_id=current_user.id,
+        user_id=current_user.id if current_user else None,
         total_amount=total,
         status="pending",
         promo_code=order.promo_code if discount_applied else None,
         # ព័ត៌មានអ្នកទទួល / ដឹកជញ្ជូន — បើអត់បញ្ចូល យកឈ្មោះពី Profile ដោយស្វ័យប្រវត្តិ
-        customer_name=(order.customer_name or "").strip() or current_user.name,
+        customer_name=(order.customer_name or "").strip() or profile_name or "Customer",
         customer_phone=(order.customer_phone or "").strip(),
+        customer_email=customer_email,
         shipping_address=order.shipping_address or "",
         note=order.note or "",
     )
@@ -96,10 +132,19 @@ async def checkout(
     )
     if payment:
         new_order.payment_ref = payment["transaction_id"]
+        # រក្សាទុក QR / Redirect URL ក្នុង Database
+        # -> អតិថិជន Refresh ឬបើកទំព័រឡើងវិញក៏ឃើញ QR ដដែល (មិនបាត់)
+        new_order.payment_qr_url = payment.get("qr_url") or ""
+        new_order.payment_url = payment.get("url") or ""
         db.commit()
 
     # Redirect Checkout URL (ABA Pay Managed Checkout) — ប្រើជាជម្រើស
     payment_url = payment["url"] if payment else f"https://pay.example.com/checkout/{uuid.uuid4()}"
+
+    branding = payment_branding(db)
+
+    # Real-time: ជូនដំណឹងទៅ Admin (Orders ថ្មីឡើងភ្លាម) និង Storefront
+    background_tasks.add_task(broadcast_orders_changed)
 
     return {
         "order_id": new_order.id,
@@ -110,16 +155,38 @@ async def checkout(
         "payment_transaction_id": payment["transaction_id"] if payment else None,
         "payment_qr_url": payment["qr_url"] if payment else None,
         "payment_qr": payment["qr"] if payment else None,
+        "payment_company_name": branding["company_name"],
+        "payment_display_name": branding["display_name"],
+        "payment_bakong_id": branding["bakong_id"],
+        "currency": branding["currency"],
+        "khr_rate": branding["khr_rate"],
     }
 
 @router.get("/{order_id}/status")
 def order_status(order_id: int, db: Session = Depends(get_db)):
-    """ពិនិត្យស្ថានភាព Order តាមលេខសម្គាល់ (សម្រាប់ទំព័រ Order Success)"""
+    """ពិនិត្យស្ថានភាព Order តាមលេខសម្គាល់ (សម្រាប់ទំព័រ Order Success)
+
+    ត្រឡប់ QR + ព័ត៌មាន Bakong ផងដែរ ដើម្បីឱ្យអតិថិជន Refresh ទំព័រហើយ
+    នៅតែឃើញ QR សម្រាប់បង់ប្រាក់ (មិនបាត់ពេល Refresh)"""
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    branding = payment_branding(db)
     return {
         "order_id": order.id,
         "status": order.status,
         "total_amount": order.total_amount,
+        "payment_enabled": bool(order.payment_ref),
+        "payment_transaction_id": order.payment_ref,
+        "payment_qr_url": order.payment_qr_url or None,
+        "payment_url": order.payment_url or None,
+        "payment_company_name": branding["company_name"],
+        "payment_display_name": branding["display_name"],
+        "payment_bakong_id": branding["bakong_id"],
+        "currency": branding["currency"],
+        "khr_rate": branding["khr_rate"],
+        "customer_name": order.customer_name or "",
+        "customer_phone": order.customer_phone or "",
+        "customer_email": order.customer_email or "",
+        "shipping_address": order.shipping_address or "",
     }

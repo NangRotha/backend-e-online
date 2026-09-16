@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from typing import Optional
 from . import models, auth
 from .database import get_db
 
@@ -36,3 +37,25 @@ def get_current_admin(current_user: models.User = Depends(get_current_user)):
             detail="Admin access required",
         )
     return current_user
+
+
+# ============================================================
+# Guest Checkout — Token ជាជម្រើស (Optional)
+# ============================================================
+# ⚠️ Frontend User លែងមាន Login/Sign Up -> អតិថិជនអាចបញ្ជាទិញបានដោយគ្មានគណនី
+# បើអ្នកប្រើផ្ញើ Token មក (ឧ. Admin កំពុងសាកល្បង) យើងនឹងភ្ជាប់ Order ជាមួយ User នោះ
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl="/api/auth/login", auto_error=False
+)
+
+def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+):
+    """ទាញយក User បច្ចុប្បន្នបើមាន Token ត្រឹមត្រូវ — បើគ្មាន -> None (Guest)"""
+    if not token:
+        return None
+    payload = auth.decode_token(token)
+    if not payload or "sub" not in payload:
+        return None
+    return db.query(models.User).filter(models.User.email == payload["sub"]).first()

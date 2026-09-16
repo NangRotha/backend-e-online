@@ -103,6 +103,19 @@ def _init_db_once():
         conn.execute(text(
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS note VARCHAR DEFAULT ''"
         ))
+        # Migration: បន្ថែម column អ៊ីមែលអតិថិជន ទៅតារាង orders
+        # (Guest Checkout — អតិថិជនអត់ Login ក៏អាចទទួល Receipt តាមអ៊ីមែលបាន)
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_email VARCHAR DEFAULT ''"
+        ))
+        # Migration: បន្ថែម columns សម្រាប់រក្សា QR / Redirect URL របស់ការបង់ប្រាក់
+        # (ដើម្បីឱ្យអតិថិជន Refresh ទំព័រ Order Success ហើយនៅតែឃើញ QR បង់ប្រាក់)
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_qr_url VARCHAR DEFAULT ''"
+        ))
+        conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_url VARCHAR DEFAULT ''"
+        ))
         conn.commit()
 
 

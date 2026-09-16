@@ -31,6 +31,14 @@ async def broadcast_products_changed():
     """ប្រកាសទៅគ្រប់ Client ថាផលិតផលបានផ្លាស់ប្តូរ (បង្កើត/កែ/លុប)"""
     await manager.broadcast({"type": "products_changed", "message": "Products have been updated"})
 
+async def broadcast_orders_changed():
+    """ប្រកាសទៅគ្រប់ Client ថា Order បានផ្លាស់ប្តូរ (បង្កើតថ្មី / ប្តូរស្ថានភាព / បង់ប្រាក់រួច)
+
+    - frontend-admin: refresh បញ្ជី Orders + Dashboard
+    - frontend-user: refresh ស្ថានភាពការបង់ប្រាក់លើទំព័រ Order Success
+    """
+    await manager.broadcast({"type": "orders_changed", "message": "Orders have been updated"})
+
 async def broadcast_alerts_changed():
     """ប្រកាសទៅគ្រប់ Client ថា Alert / Popup បានផ្លាស់ប្តូរ (បង្កើត/កែ/លុប)"""
     await manager.broadcast({"type": "alerts_changed", "message": "Alerts have been updated"})

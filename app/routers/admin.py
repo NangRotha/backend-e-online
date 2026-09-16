@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
@@ -6,6 +6,7 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
 from ..storage import delete_upload_by_url
+from ..ws_manager import broadcast_orders_changed
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -163,6 +164,7 @@ def list_orders(db: Session = Depends(_admin)):
         result.append({
             "id": o.id,
             "user_email": user.email if user else None,
+            "customer_email": o.customer_email or "",
             "total_amount": o.total_amount,
             "status": o.status,
             "promo_code": o.promo_code,
@@ -187,6 +189,7 @@ def list_orders(db: Session = Depends(_admin)):
 def update_order_status(
     order_id: int,
     payload: schemas.OrderStatusUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(_admin),
 ):
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
@@ -196,6 +199,8 @@ def update_order_status(
         raise HTTPException(status_code=400, detail="Invalid status")
     order.status = payload.status
     db.commit()
+    # Real-time: ជូនដំណឹងទៅ Admin Panel ផ្សេងទៀត និង Storefront (Order Success)
+    background_tasks.add_task(broadcast_orders_changed)
     return {"message": "Order status updated", "order_id": order.id, "status": order.status}
 
 # ==========================================

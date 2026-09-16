@@ -56,9 +56,12 @@ class Order(Base):
     status = Column(String, default="pending")  # 'pending', 'paid', 'shipped'
     promo_code = Column(String, nullable=True)
     payment_ref = Column(String, nullable=True)
+    payment_qr_url = Column(String, default="")   # រូប QR (KHQR) — រក្សាទុកដើម្បីបង្ហាញឡើងវិញ
+    payment_url = Column(String, default="")      # Redirect Checkout URL (ABA Pay)
     # ព័ត៌មានអ្នកទទួល / ដឹកជញ្ជូន (បញ្ចូលពីទំព័រ Checkout)
     customer_name = Column(String, nullable=True)   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
     customer_phone = Column(String, nullable=True)  # លេខទូរសព្ទ
+    customer_email = Column(String, default="")     # អ៊ីមែលអតិថិជន (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
     shipping_address = Column(String, default="")   # អាសយដ្ឋានដឹកជញ្ជូន
     note = Column(String, default="")               # កំណត់ចំណាំ (optional)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
