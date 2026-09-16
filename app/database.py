@@ -1,7 +1,13 @@
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
-from .config import settings
+from pathlib import Path
+import os
 import time
+
+from .config import BACKEND_DIR, settings
+
+# ឯកសារ SQLite ដើម (ប្រើជា Fallback បើ SQLITE_PATH បង្កើតមិនបាន)
+DEFAULT_SQLITE_FILE = BACKEND_DIR / "ecommerce.db"
 
 # យក Database URL ពី Environment Variables
 # - បើកំណត់ DATABASE_URL / DATABASE_URL_INTERNAL -> PostgreSQL (Render)
@@ -9,11 +15,37 @@ import time
 DATABASE_URL = settings.active_database_url
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 DB_ENGINE_LABEL = "SQLite" if IS_SQLITE else "PostgreSQL"
+# URL ដែលកំពុងប្រើពិតប្រាកដ (អាចខុសពី DATABASE_URL បើ SQLite Fallback ទៅ backend/)
+EFFECTIVE_DATABASE_URL = DATABASE_URL
 
 
 def _create_engine():
     """បង្កើត Engine តាមប្រភេទ Database (SQLite ឬ PostgreSQL)"""
+    global EFFECTIVE_DATABASE_URL
+
     if IS_SQLITE:
+        # ពិនិត្យ/បង្កើតថតមេរបស់ឯកសារ SQLite (ឧ. /var/data)
+        # ⚠️ បើបង្កើតមិនបាន (ឧ. Render free plan គ្មាន Disk -> /var/data មិនមាន)
+        # នោះត្រូវ Fallback ទៅ `backend/ecommerce.db` វិញ ដើម្បីកុំឱ្យ App Crash
+        target = _sqlite_path_from_url(DATABASE_URL)
+        directory = os.path.dirname(target) if target else ""
+        if directory:
+            try:
+                os.makedirs(directory, exist_ok=True)
+            except Exception as exc:  # noqa: BLE001
+                fallback = f"sqlite:///{DEFAULT_SQLITE_FILE}"
+                print(
+                    f"⚠️  SQLite: មិនអាចបង្កើតថត '{directory}' ({type(exc).__name__}) "
+                    f"→ ប្រើ '{DEFAULT_SQLITE_FILE}' ជំនួស។ "
+                    "(លើ Render សូមបន្ថែម Persistent Disk សម្រាប់ /var/data)",
+                    flush=True,
+                )
+                EFFECTIVE_DATABASE_URL = fallback
+                return create_engine(
+                    fallback,
+                    connect_args={"check_same_thread": False},
+                    pool_pre_ping=True,
+                )
         # SQLite — ត្រូវការ check_same_thread=False ព្រោះ FastAPI ប្រើច្រើន Thread
         return create_engine(
             DATABASE_URL,
@@ -28,6 +60,17 @@ def _create_engine():
     )
 
 
+def _sqlite_path_from_url(url: str) -> str:
+    """ដកផ្លូវឯកសារចេញពី SQLite URL (sqlite:////var/data/x.db -> /var/data/x.db)"""
+    for prefix in ("sqlite:///", "sqlite://"):
+        if url.startswith(prefix):
+            path = url[len(prefix):]
+            if path.startswith("/") and not url.startswith("sqlite:////"):
+                path = "/" + path.lstrip("/")  # sqlite:///relative -> relative (រក្សាដូចដើម)
+            return path
+    return ""
+
+
 engine = _create_engine()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -39,8 +82,8 @@ DB_RETRY_DELAY_SECONDS = 3
 
 
 def safe_database_url(url: str = None) -> str:
-    """បង្ហាញ Database URL ដោយលាក់ Username/Password (កុំឱ្យលេចក្នុង Log)"""
-    value = url or DATABASE_URL
+    """បង្ហាញ Database URL ដែលកំពុងប្រើ ដោយលាក់ Username/Password"""
+    value = url or EFFECTIVE_DATABASE_URL
     if "@" in value:
         scheme = value.split("://", 1)[0] if "://" in value else ""
         return f"{scheme}://***@{value.split('@', 1)[1]}"

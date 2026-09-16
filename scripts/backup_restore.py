@@ -208,9 +208,15 @@ def cmd_from_postgres(args):
         print("⚠️  Source និង Target ជា Database តែមួយ — ឈប់ដើម្បីសុវត្ថិភាព")
         sys.exit(1)
 
-    source = create_engine(
-        source_url, connect_args={"sslmode": "require", "connect_timeout": 15}
-    )
+    # គាំទ្រទាំង PostgreSQL និង SQLite ជា Source (សម្រាប់ Test ឬផ្លាស់ពី SQLite → SQLite)
+    if source_url.startswith("sqlite"):
+        source = create_engine(
+            source_url, connect_args={"check_same_thread": False}
+        )
+    else:
+        source = create_engine(
+            source_url, connect_args={"sslmode": "require", "connect_timeout": 15}
+        )
     print(f"📤 Source: {safe_database_url(source_url)}")
     print(f"📥 Target: {DB_ENGINE_LABEL} — {safe_database_url()}")
 
@@ -250,7 +256,11 @@ def main():
     p_import.add_argument("--truncate", action="store_true", help="លុបទិន្នន័យចាស់មុន Import")
     p_import.set_defaults(func=cmd_import)
 
-    p_pg = sub.add_parser("from-postgres", help="ចម្លងផ្ទាល់ពី PostgreSQL")
+    p_pg = sub.add_parser(
+        "copy-source",
+        aliases=["from-postgres"],
+        help="ចម្លងពី Database ដើម (PostgreSQL ឬ SQLite) ចូល DB បច្ចុប្បន្ន",
+    )
     p_pg.add_argument("--source", default="", help="SOURCE_DATABASE_URL (ឬប្រើ env)")
     p_pg.add_argument("--truncate", action="store_true")
     p_pg.set_defaults(func=cmd_from_postgres)

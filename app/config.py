@@ -73,13 +73,16 @@ class Settings(BaseSettings):
     )
 
     # ============================================================
-    # Database Engine — ជ្រើសរើសដោយច្បាស់លាស់
-    #   "auto"     = ស្វ័យប្រវត្តិ (RENDER + DATABASE_URL_INTERNAL -> Postgres,
-    #                បើមាន DATABASE_URL -> តាមវា, បើអត់ -> SQLite)  [Default]
-    #   "sqlite"   = បង្ខំឱ្យប្រើ SQLite (SQLITE_PATH ឬ backend/ecommerce.db)
-    #   "postgres" = បង្ខំឱ្យប្រើ PostgreSQL (ត្រូវមាន DATABASE_URL)
+    # Database Engine — ជ្រើសរើស Database ដែលប្រើ
+    #   "sqlite"   = 🟢 **SQLite** (Default ឥឡូវនេះ) — ឯកសារក្នុងម៉ាស៊ីន/ថត Disk
+    #                បង្កើតដោយស្វ័យប្រវត្តិ (SQLITE_PATH ឬ backend/ecommerce.db)
+    #   "postgres" = PostgreSQL (ត្រូវមាន DATABASE_URL ឬ DATABASE_URL_INTERNAL)
+    #   "auto"     = RENDER+DATABASE_URL_INTERNAL → Postgres · បើអត់ → SQLite
+    #
+    # ⚠️ ការផ្លាស់ពី PostgreSQL → SQLite ត្រូវធ្វើ Migration ជាមុន
+    #    (បើអត់ ទិន្នន័យនឹងទទេ)៖ មើល `scripts/backup_restore.py` ក្នុង README
     # ============================================================
-    DB_ENGINE: str = "auto"
+    DB_ENGINE: str = "sqlite"
 
     # PostgreSQL (Render) — External Database URL
     # ប្រើសម្រាប់ Local Development និង Deploy លើ Vercel
@@ -105,6 +108,11 @@ class Settings(BaseSettings):
     # CORS Regex (ជាជម្រើស) — សម្រាប់ Vercel Preview Deployment ដែល URL ផ្លាស់ប្តូររាល់ដង
     # ឧ. ^https://frontend-(user|admin)-e-online.*\.vercel\.app$
     CORS_ORIGIN_REGEX: str = ""
+
+    @property
+    def using_sqlite(self) -> bool:
+        """បើកឃើញថាកំពុងប្រើ SQLite ជាក់ស្តែង (សម្រាប់ Diagnostics)"""
+        return self.active_database_url.startswith("sqlite")
 
     SECRET_KEY: str = "your-secret-key-change-this"
     ALGORITHM: str = "HS256"
@@ -154,6 +162,22 @@ class Settings(BaseSettings):
     KHQRCC_SECRET_KEY: str = ""
     # URL របស់ Storefront (សម្រាប់ success_url ពេលអតិថិជនបង់ប្រាក់ចប់)
     FRONTEND_URL: str = "https://frontend-user-e-online.vercel.app"
+
+    # ============================================================
+    # 👤 Bootstrap Admin — បង្កើត Admin ដំបូងដោយស្វ័យប្រវត្តិ ពេល App Startup
+    # ------------------------------------------------------------
+    # ចាំបាច់សម្រាប់ Host ដែល **គ្មាន Shell/SSH** (ឧ. Render Free Plan —
+    # មិនអាចរត់ `create_admin.py` បានទេ ព្រោះ Free គ្មាន Shell/One-off Job)
+    #
+    # បើកំណត់ `ADMIN_EMAIL` + `ADMIN_PASSWORD` -> បង្កើត/ដំឡើងជា Admin (Idempotent)
+    # បើទុកទទេ -> គ្មានអ្វីកើតឡើង (មិនបង្កើត User ណាមួយទេ — សុវត្ថិភាព)
+    #
+    # ⚠️ `ADMIN_PASSWORD` ជា Source of Truth៖ បើ Password ក្នុង DB ខុសពី Env
+    #    នោះវានឹងកំណត់តាម Env វិញរាល់ពេល Startup (ដើម្បីកុំឱ្យចូលមិនបាន)
+    # ============================================================
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
+    ADMIN_NAME: str = "Admin"  # ឈ្មោះបង្ហាញ (Display Name) របស់ Admin
 
     @property
     def clean_database_url(self) -> str:

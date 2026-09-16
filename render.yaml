@@ -1,31 +1,49 @@
 # ============================================================
 # Render Blueprint — Deploy Backend (FastAPI) លើ Render
 # ============================================================
+# 🗄️  Database = **SQLite** (`DB_ENGINE=sqlite`)
+#     • Free plan  → ឯកសារ DB ស្ថិតក្នុង Service Folder (Ephemeral)
+#                    ⚠️ ទិន្នន័យបាត់ពេល Redeploy/Restart (ល្មមសម្រាប់សាកល្បង)
+#     • Starter+   → ដោះ Comment `disk:` + `SQLITE_PATH` + `UPLOAD_DIR` (OPTION B)
+#                    ទិន្នន័យ និងរូបភាព **មិនបាត់** ពេល Redeploy
+#
+# ⚠️ ចំណាំសំខាន់ (Blueprint Schema):
+#    Render **មិនគាំទ្រ key `pythonVersion`** ក្នុង render.yaml ទេ
+#    (Schema កំណត់ `additionalProperties: false` → Blueprint នឹងត្រូវបដិសេធ)
+#    → Python Version កំណត់ដោយឯកសារ `.python-version` នៅ root នៃ repo (= 3.12)
+#      ឬ Env Var `PYTHON_VERSION=3.12.10` (សម្រាប់ Manual Web Service តែប៉ុណ្ណោះ)
+#
 # របៀបប្រើ:
 #   1. Push code ទៅ GitHub (ធានាថា render.yaml នេះនៅ root នៃ repo)
 #   2. Render Dashboard -> New -> Blueprint -> ជ្រើស repo នេះ
 #   3. Render នឹងបង្កើត Web Service ដោយស្វ័យប្រវត្តិ
-#   4. ចូលទៅ Service -> Environment ហើយបំពេញ env vars ដែលមាន `sync: false`
-#      (SECRET_KEY, DATABASE_URL, DATABASE_URL_INTERNAL, SMTP_*, TELEGRAM_*, DEEPSEEK_API_KEY, CORS_ORIGINS)
+#   4. **Admin ដំបូង**: ដាក់ `ADMIN_EMAIL` + `ADMIN_PASSWORD` → បង្កើតដោយស្វ័យប្រវត្តិពេល Startup
+#      ⚠️ Free plan គ្មាន Shell/SSH → រត់ `create_admin.py` មិនបានទេ
+#   5. (ស្រេចចិត្ត) ប្តូរទៅ PostgreSQL: `DB_ENGINE=postgres` + `DATABASE_URL`
 #
-# ចំណាំ៖
-#   - Free/Starter plan មិនមាន Persistent Disk ទេ -> រូបភាព Upload នឹងបាត់ពេល Redeploy
-#   - បើចង់រក្សារូបភាព ប្រើ plan ដែលគាំទ្រ Disk ហើយបន្ថែម disk + UPLOAD_DIR
-#   - WebSocket real-time ត្រូវការ Single Instance តែប៉ុណ្ណោះ
-#     (កុំ Scale ទៅច្រើន instance ព្រោះ connection manager ស្ថិតក្នុង Memory)
+# ចំណាំ:
+#   - Free plan បិទ port 25/465/587 → ប្រើ `BREVO_API_KEY` (HTTPS) សម្រាប់ OTP/Receipt
+#   - WebSocket real-time ត្រូវការ Single Instance (កុំ Scale ច្រើន)
+#   - Region `singapore` ជិតកម្ពុជាជាងគេ (oregon · ohio · virginia · frankfurt · singapore)
+# ============================================================
 services:
   - type: web
     name: backend-e-online
     runtime: python
-    pythonVersion: 3.12.8
-    plan: free
+    # ⚠️ មិនដាក់ `pythonVersion:` ទេ — Blueprint Schema បដិសេធ (additionalProperties: false)
+    #    Python Version កំណត់ដោយឯកសារ `.python-version` (= 3.12) នៅ root នៃ repo
+    region: singapore          # ជិតកម្ពុជាជាងគេ (oregon · ohio · virginia · frankfurt · singapore)
+    plan: free                 # ប្តូរទៅ `starter` បើចង់បន្ថែម Persistent Disk (OPTION B)
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
     # --workers 1 : WebSocket manager ស្ថិតក្នុង Memory -> ត្រូវការ Single Instance
     # --proxy-headers : Render ជា Reverse Proxy (ត្រូវអាន X-Forwarded-*)
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'
     healthCheckPath: /health
-    # បើចង់រក្សាទិន្នន័យ SQLite + រូបភាព Upload លើ Render (ត្រូវការ Plan ដែលមាន Disk)៖
+    # ============================================================
+    # OPTION B — Persistent Disk (ត្រូវការ Plan `starter` ឡើងទៅ · Free មិនគាំទ្រ)
+    # ដោះ Comment ៤ បន្ទាត់ខាងក្រោម + ដោះ Comment `SQLITE_PATH`/`UPLOAD_DIR` ក្នុង envVars
+    # ============================================================
     # disk:
     #   name: data
     #   mountPath: /var/data
@@ -34,27 +52,35 @@ services:
       # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ
       - key: SECRET_KEY
         generateValue: true
-      # Origin ដែលអនុញ្ញាតឱ្យភ្ជាប់មក API (ញែកដោយសញ្ញាក្បៀស)
-      # ឧ. https://frontend-user-e-online.vercel.app,https://frontend-admin-e-online.vercel.app
-      - key: CORS_ORIGINS
-        sync: false
-      # ជាជម្រើស: Regex សម្រាប់ Vercel Preview URL ដែលផ្លាស់ប្តូររាល់ពេល Deploy
-      # ឧ. ^https://frontend-(user|admin)-e-online.*\.vercel\.app$
-      - key: CORS_ORIGIN_REGEX
-        sync: false
-      # Database engine: "auto" (Default) | "sqlite" | "postgres"
-      # បើចង់ប្រើ SQLite លើ Render: ដាក់ "sqlite" + SQLITE_PATH=/var/data/ecommerce.db
-      # រួចបន្ថែម Persistent Disk (មើលព័ត៌មានក្នុង README)
+      # 🗄️ Database = SQLite (DB_ENGINE=sqlite)
+      # Free plan គ្មាន Disk -> ឯកសារ DB ស្ថិតក្នុង Service Folder (Ephemeral)
+      # ⚠️ ទិន្នន័យបាត់ពេល Redeploy/Restart — ប្រើ OPTION B (Disk) ដើម្បីកុំបាត់
       - key: DB_ENGINE
-        sync: false
+        value: sqlite
+      # OPTION B (Starter + Disk) — ដោះ Comment ២ ប្លុកខាងក្រោម + `disk:` ខាងលើ
+      # - key: SQLITE_PATH
+      #   value: /var/data/ecommerce.db
+      # - key: UPLOAD_DIR
+      #   value: /var/data/uploads
+      #
+      # PostgreSQL (ជម្រើសផ្សេង) — ដាក់ `DB_ENGINE=postgres` រួចបំពេញ URL ខាងក្រោម
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_INTERNAL
         sync: false
-      # SQLite (ជម្រើសជំនួស PostgreSQL) — បើចង់ប្រើ ត្រូវបន្ថែម Persistent Disk
-      # រួចទុក DATABASE_URL ទទេ ហើយកំណត់ SQLITE_PATH=/var/data/ecommerce.db
-      - key: SQLITE_PATH
+      # 👤 Admin ដំបូង — បង្កើតដោយស្វ័យប្រវត្តិពេល Startup
+      # (ចាំបាច់លើ Free plan ព្រោះគ្មាន Shell ដើម្បីរត់ `create_admin.py`)
+      # ឧ. ADMIN_EMAIL=admin@mystore.com · ADMIN_PASSWORD=ពាក្យសម្ងាត់វែងៗ
+      - key: ADMIN_EMAIL
         sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # CORS — Origin របស់ Frontend (Vercel) · មិនមែន Secret -> ដាក់តម្លៃជាមុនបាន
+      - key: CORS_ORIGINS
+        value: "https://frontend-user-e-online.vercel.app,https://frontend-admin-e-online.vercel.app"
+      # Regex សម្រាប់ Vercel Preview URL ដែលផ្លាស់ប្តូររាល់ពេល Deploy
+      - key: CORS_ORIGIN_REGEX
+        value: '^https://frontend-(user|admin)-e-online.*\.vercel\.app$'
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -94,7 +120,4 @@ services:
       - key: KHQRCC_SECRET_KEY
         sync: false
       - key: FRONTEND_URL
-        sync: false
-      # ថតរក្សារូបភាព (បើប្រើ Persistent Disk -> UPLOAD_DIR=/var/data/uploads)
-      - key: UPLOAD_DIR
-        sync: false
+        value: https://frontend-user-e-online.vercel.app

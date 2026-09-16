@@ -1,14 +1,106 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .database import init_db
+from .database import SessionLocal, init_db
 from .config import settings as app_settings
+from . import models
 from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts, payments
 from .storage import ensure_upload_dir
 from .email_sender import email_status
 
-# បង្កើតតារាងទាំងអស់ក្នុង PostgreSQL ប្រសិនបើមិនទាន់មាន (រួមទាំង Migration)
+
+def _bootstrap_admin() -> None:
+    """បង្កើត/ដំឡើង Admin ដំបូងដោយស្វ័យប្រវត្តិ ពី Env Var (`ADMIN_EMAIL`/`ADMIN_PASSWORD`)
+
+    ចាំបាច់សម្រាប់ Host ដែល **គ្មាន Shell/SSH** (ឧ. Render Free Plan — រត់
+    `create_admin.py` មិនបានទេ) ព្រោះបើគ្មាន Admin នោះចូល Admin Panel មិនបាន។
+
+    ដំណើរការ **Idempotent** (សុវត្ថិភាព រត់រាល់ Startup)៖
+      1. គ្មានគណនី -> បង្កើតថ្មី (role=admin, email_verified=True)
+      2. មានគណនីតែ role=user -> ដំឡើងជា admin
+      3. Password ក្នុង DB ខុសពី `ADMIN_PASSWORD` -> កំណត់តាម Env វិញ
+    ⚠️ បើ `ADMIN_EMAIL` ឬ `ADMIN_PASSWORD` ទទេ -> រំលងទាំងស្រុង (មិនបង្កើត User)
+    """
+    from .auth import hash_password, verify_password
+
+    email = (app_settings.ADMIN_EMAIL or "").strip().lower()
+    password = app_settings.ADMIN_PASSWORD or ""
+    if not email or not password:
+        return
+
+    # ពិនិត្យអ៊ីមែល — Login ប្រើ Pydantic `EmailStr` ដូច្នេះ Domain បម្រុង (.local/.test...)
+    # នឹងត្រូវបដិសេធ (422) -> គ្មានប្រយោជន៍បង្កើត
+    try:
+        from email_validator import EmailNotValidError, validate_email as _validate
+
+        _validate(email, check_deliverability=False)
+    except EmailNotValidError as exc:
+        print(
+            f"⚠️  Admin bootstrap: ADMIN_EMAIL '{email}' មិនត្រឹមត្រូវ ({exc}) — រំលង",
+            flush=True,
+        )
+        return
+    except ImportError:
+        pass
+
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+
+        if user is None:
+            db.add(
+                models.User(
+                    name=(app_settings.ADMIN_NAME or "").strip() or "Admin",
+                    email=email,
+                    hashed_password=hash_password(password),
+                    role="admin",
+                    email_verified=True,  # Admin មិនត្រូវការ OTP
+                )
+            )
+            db.commit()
+            print(
+                f"✅ Admin bootstrap: បង្កើត Admin '{email}' ដោយស្វ័យប្រវត្តិ",
+                flush=True,
+            )
+            return
+
+        changes = []
+        if user.role != "admin":
+            user.role = "admin"
+            changes.append("role=admin")
+        if not user.email_verified:
+            user.email_verified = True
+            changes.append("email_verified=True")
+
+        # ពិនិត្យ Password — បើ Hash ខូច/មិនស្គាល់ (UnknownHashError) ក៏ត្រូវកំណត់ឡើងវិញ
+        # ដែរ ព្រោះបើអត់ នោះ Admin នឹងចូលមិនបាន (ប៉ុន្តែមិនត្រូវឱ្យវា Crash ទេ)
+        try:
+            password_ok = verify_password(password, user.hashed_password or "")
+        except Exception:  # noqa: BLE001
+            password_ok = False
+        if not password_ok:
+            user.hashed_password = hash_password(password)
+            changes.append("password=ADMIN_PASSWORD")
+
+        if changes:
+            db.commit()
+            print(
+                f"✅ Admin bootstrap: ធ្វើបច្ចុប្បន្នភាព '{email}' ({', '.join(changes)})",
+                flush=True,
+            )
+        else:
+            print(f"ℹ️  Admin bootstrap: '{email}' ជា Admin រួចហើយ", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  Admin bootstrap បរាជ័យ: {type(exc).__name__}: {exc}", flush=True)
+    finally:
+        db.close()
+
+
+# បង្កើតតារាងទាំងអស់ក្នុង Database ប្រសិនបើមិនទាន់មាន (រួមទាំង Migration)
 init_db()
+
+# 👤 Bootstrap Admin ដំបូង (ដំណើរការតែពេលកំណត់ ADMIN_EMAIL + ADMIN_PASSWORD)
+_bootstrap_admin()
 
 # ព្រមានបើ Email (OTP) មិនទាន់កំណត់ — ពេលនោះ OTP នឹងបង្ហាញក្នុង Dev Mode តែប៉ុណ្ណោះ
 _email_cfg = email_status()
@@ -85,8 +177,65 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    """សម្រាប់ Render Health Check (Render ហៅ endpoint នេះរៀងរាល់ពេល)"""
-    return {"status": "ok"}
+    """Render Health Check + បង្ហាញទីតាំងទិន្នន័យ (SQLite file នៅឯណា?)
+
+    មិនមាន Secret ទេ — គ្រាន់តែបង្ហាញថា Database engine អ្វី ឯកសារនៅឯណា
+    និងចំនួនទិន្នន័យ ដើម្បីឱ្យអ្នកអាចពិនិត្យបានដោយ `curl /health`។
+    """
+    from .database import EFFECTIVE_DATABASE_URL, IS_SQLITE
+
+    info = {
+        "status": "ok",
+        "engine": "sqlite" if IS_SQLITE else "postgres",
+        "url": safe_database_url_for_health(),
+    }
+
+    if IS_SQLITE:
+        path = EFFECTIVE_DATABASE_URL.replace("sqlite:///", "", 1)
+        info["file"] = path
+        info["on_persistent_disk"] = path.startswith("/var/data")
+        info["note"] = (
+            "ឯកសារនេះស្ថិតលើ Persistent Disk (/var/data) ✓ ទិន្នន័យមិនបាត់ពេល Redeploy"
+            if info["on_persistent_disk"]
+            else "⚠️ ឯកសារនេះមិននៅលើ /var/data ទេ → បាត់ពេល Redeploy "
+            "(ត្រូវការ Persistent Disk + SQLITE_PATH=/var/data/ecommerce.db)"
+        )
+    else:
+        info["note"] = "ទិន្នន័យស្ថិតក្នុង PostgreSQL (មិនមែនឯកសារក្នុងម៉ាស៊ីន)"
+
+    # ចំនួនទិន្នន័យ (ស្រាលបំផុត) — ដើម្បីដឹងថា Database ទទេ ឬមានទិន្នន័យ
+    try:
+        db = SessionLocal()
+        try:
+            info["counts"] = {
+                "products": db.query(models.Product).count(),
+                "categories": db.query(models.Category).count(),
+                "orders": db.query(models.Order).count(),
+                "users": db.query(models.User).count(),
+                "site_settings": db.query(models.SiteSetting).count(),
+            }
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        info["counts_error"] = f"{type(exc).__name__}"
+
+    from .storage import cloudinary_configured, uploadthing_configured
+
+    info["storage"] = (
+        "uploadthing"
+        if uploadthing_configured()
+        else "cloudinary"
+        if cloudinary_configured()
+        else "local-disk"
+    )
+    return info
+
+
+def safe_database_url_for_health() -> str:
+    """URL ដោយលាក់ Password (សម្រាប់ /health)"""
+    from .database import safe_database_url
+
+    return safe_database_url()
 
 
 # ============================================================
@@ -114,6 +263,12 @@ def _deploy_diagnostics():
     )
     if IS_SQLITE:
         print(f"   SQLite Path: {app_settings.sqlite_file_path}", flush=True)
+        if app_settings.clean_database_url or app_settings.clean_database_url_internal:
+            print(
+                "   Note        : DATABASE_URL មាន តែត្រូវបានមិនគិត ព្រោះ DB_ENGINE=sqlite "
+                "→ Postgres data មិនត្រូវបានប្រើ (ធ្វើ Migration បើចង់បានទិន្នន័យចាស់)",
+                flush=True,
+            )
 
     # ⚠️ DB_ENGINE=postgres តែគ្មាន DATABASE_URL → បាន Fallback ទៅ SQLite
     if app_settings.db_engine == "postgres" and not (
