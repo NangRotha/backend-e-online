@@ -1,35 +1,35 @@
 # Backend — E-commerce API (FastAPI)
 
 Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដែលអាច Deploy
-លើ **Render** (Web Service + **SQLite** ជា Default ឬ PostgreSQL)។
+លើ **Render** (Web Service + **SQLite**)។
 
 ## បច្ចេកវិទ្យា
 
 - **FastAPI** + **Uvicorn** (WebSocket real-time ផងដែរ)
-- **SQLAlchemy** + **SQLite** (Local) ឬ **PostgreSQL** (Render Postgres)
+- **SQLAlchemy** + **SQLite** (Database តែមួយ — គ្មាន Driver បន្ថែម)
 - JWT Auth (Admin), KHQR / ABA Pay, DeepSeek AI Chat, UploadThing/Cloudinary
-- **SQLite + PostgreSQL ទាំងពីរ** — Migration រត់ស្វ័យប្រវត្តិ ដំណើរការលើទាំងពីរ
+- **SQLite តែមួយប៉ុណ្ណោះ** — Migration រត់ស្វ័យប្រវត្តិ (Column/Index ថ្មី)
 
 ---
 
-## Database — 🟢 SQLite (Default ឥឡូវនេះ)
+## Database — 🟢 SQLite តែមួយប៉ុណ្ណោះ
 
-Backend នេះប្រើ **SQLite** ជា Database ដើម (មិនត្រូវការ PostgreSQL ទេ)។
+Backend នេះប្រើ **SQLite** ជា Database តែមួយ (គ្មាន PostgreSQL ទៀតទេ)។
 
-| លក្ខខណ្ឌ | Database ដែលប្រើ |
+| Env Var | លទ្ធផល |
 | --- | --- |
-| `DB_ENGINE=sqlite` **(Default)** | **SQLite** — `SQLITE_PATH` ឬ `backend/ecommerce.db` |
-| `DB_ENGINE=postgres` | PostgreSQL (`DATABASE_URL_INTERNAL` → `DATABASE_URL`) |
-| `DB_ENGINE=auto` | RENDER + `DATABASE_URL_INTERNAL` → Postgres · បើអត់ → SQLite |
+| `SQLITE_PATH` ទទេ **(Default)** | ឯកសារ `backend-e-online/ecommerce.db` (បង្កើតស្វ័យប្រវត្តិ) |
+| `SQLITE_PATH=/var/data/ecommerce.db` | ប្រើឯកសារនៅទីតាំងកំណត់ (ឧ. Render + Persistent Disk) |
 
-> ទោះ `DATABASE_URL` នៅកំណត់ក៏ដោយ — បើ `DB_ENGINE=sqlite` នោះ **SQLite ជាអ្នកប្រើ**
-> ហើយ Postgres មិនត្រូវបានប៉ះទាល់តែសោះ (Log បង្ហាញ `Note: DATABASE_URL … មិនគិត`)។
+> ⚠️ បើថតក្នុង `SQLITE_PATH` សរសេរមិនបាន (ឧ. Free plan គ្មាន Disk → `/var/data` មិនមាន)
+> នោះ Backend នឹង **Fallback ទៅ `backend-e-online/ecommerce.db`** ដោយស្វ័យប្រវត្តិ (App មិន Crash)។
+> គ្មាន Env Var `DATABASE_URL` / `DATABASE_URL_INTERNAL` / `DB_ENGINE` ទៀតទេ។
 
 ### ប្រើ SQLite ក្នុងម៉ាស៊ីន (Local — គ្មាន Config)
 
 ```bash
 cd backend-e-online
-# ទុក DATABASE_URL ទទេ ក្នុង .env (ឬគ្មាន .env ក៏បាន)
+# ទុក SQLITE_PATH ទទេ (ឬគ្មាន .env ក៏បាន) -> ប្រើ backend-e-online/ecommerce.db ស្វ័យប្រវត្តិ
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --reload
 ```
@@ -52,7 +52,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 > 🆓 **លើ Free plan (គ្មាន Disk)**៖ ទុក `SQLITE_PATH` ទទេ ដើម្បីឱ្យ Backend បង្កើត DB
 > ក្នុង Service Folder (`/opt/render/project/src/ecommerce.db`) — App ដំណើរការធម្មតា
 > ប៉ុន្តែ **ទិន្នន័យបាត់ពេល Redeploy/Restart** (ល្មមសម្រាប់សាកល្បងប៉ុណ្ណោះ)។
-> បើចង់ទិន្នន័យមិនបាត់ → ប្រើ **OPTION B** (Starter + Disk) ឬ PostgreSQL ខាងក្រៅ។
+> បើចង់ទិន្នន័យមិនបាត់ → ប្រើ **OPTION B** (Starter + Persistent Disk + `SQLITE_PATH`)។
 
 **១) បន្ថែម Disk** — Render → Service → **Disks** → *Add Disk*៖
 `Name: data` · `Mount Path: /var/data` · `Size: 1 GB`
@@ -60,21 +60,18 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 **២) Environment** (កំណត់រួចក្នុង `render.yaml`)៖
 
 ```
-DB_ENGINE=sqlite
 SQLITE_PATH=/var/data/ecommerce.db
 UPLOAD_DIR=/var/data/uploads
-DATABASE_URL=            ← ទុកទទេ (មិនប្រើទៀត)
-DATABASE_URL_INTERNAL=   ← ទទេ ឬលុបចោល
 ```
 
-**៣) យកទិន្នន័យចាស់ពី Postgres មក** (បើចង់បានទិន្នន័យចាស់) — មើលផ្នែកខាងក្រោម។
-បើមិនធ្វើ SQLite នឹងទទេ (ត្រូវបង្កើតផលិតផល/ការកំណត់ថ្មី)។
+**៣) បើមានឯកសារ SQLite ចាស់** (ឧ. ពីកុំព្យូទ័ររបស់អ្នក) — មើលផ្នែក
+*Backup / Restore* ខាងក្រោម។ បើគ្មានទេ SQLite នឹងទទេ (ត្រូវបង្កើតផលិតផល/ការកំណត់ថ្មី)។
 
 **៤) ពិនិត្យ** — Logs ត្រូវបង្ហាញ៖
 
 ```
 🗄️  Database (SQLite): sqlite:////var/data/ecommerce.db
-   Database   : SQLite (DB_ENGINE=sqlite) → sqlite:////var/data/ecommerce.db
+   Database   : SQLite → sqlite:////var/data/ecommerce.db
    SQLite Path: /var/data/ecommerce.db
    Storage DB : ✅ SQLITE_PATH ស្ថិតលើ Persistent Disk (/var/data)
 ```
@@ -138,13 +135,13 @@ python -c "import sqlite3;c=sqlite3.connect('backend-e-online/ecommerce.db');pri
 > 💡 បើអ្នកចង់ "ឃើញ" ឯកសារនេះក្នុង Finder សូមបើក Folder `backend-e-online/`
 > (ឯកសារ `ecommerce.db` មិនមែនជា Hidden file ទេ — វានឹងបង្ហាញធម្មតា)។
 
-### 🔄 Migration៖ PostgreSQL → SQLite (ដោយមិនបាត់ទិន្នន័យ)
+### 🔄 Backup / ផ្លាស់ទិន្នន័យ (SQLite → SQLite ដោយមិនបាត់ទិន្នន័យ)
 
 > ⚠️ **សំខាន់បំផុត:** Render មិនរក្សាឯកសារ SQLite ទេ បើគ្មាន **Persistent Disk**។
 > Free plan មិនគាំទ្រ Disk → ត្រូវប្រើ Plan ដែលមាន Disk (ឧ. Starter)។
 > បើគ្មាន Disk នោះ **ទិន្នន័យនឹងបាត់រាល់ពេល Redeploy/Restart**។
 
-១) **Export ទិន្នន័យពី Production (Postgres) ជាមុន** — ត្រូវការគណនី Admin៖
+១) **Export ទិន្នន័យពី Backend ដែលកំពុងដំណើរការ** — ត្រូវការគណនី Admin៖
 
 ```bash
 cd backend-e-online
@@ -157,7 +154,7 @@ cd backend-e-online
 ២) **Import ចូល SQLite ក្នុងម៉ាស៊ីនរបស់អ្នក** (ដើម្បីពិនិត្យជាមុន)៖
 
 ```bash
-DB_ENGINE=sqlite .venv/bin/python scripts/backup_restore.py import --file backup.json --truncate
+.venv/bin/python scripts/backup_restore.py import --file backup.json --truncate
 .venv/bin/python create_admin.py <admin-email> --password '<new-password>' --reset
 ```
 
@@ -167,14 +164,9 @@ DB_ENGINE=sqlite .venv/bin/python scripts/backup_restore.py import --file backup
 ៤) **លើ Render** — Environment កំណត់៖
 
 ```
-DB_ENGINE=sqlite
 SQLITE_PATH=/var/data/ecommerce.db
 UPLOAD_DIR=/var/data/uploads
-DATABASE_URL=            ← ទុកទទេ (ឬលុបចោល)
-DATABASE_URL_INTERNAL=   ← ទុកទទេ (ឬលុបចោល)
 ```
-
-> បើទុក `DATABASE_URL` នៅ ត្រូវដាក់ `DB_ENGINE=sqlite` ដើម្បីបង្ខំឱ្យប្រើ SQLite។
 
 ៥) **Seed ទិន្នន័យចូល SQLite លើ Render** — មាន ២ វិធី៖
 - **វិធី A (ងាយ):** upload `ecommerce.db` ដែល Import ក្នុងម៉ាស៊ីនទៅ Disk តាម Render Shell៖
@@ -184,29 +176,29 @@ DATABASE_URL_INTERNAL=   ← ទុកទទេ (ឬលុបចោល)
   ```
 - **វិធី B (ណែនាំ):** បន្ថែម `backup.json` ទៅ Disk រួច Import តាម Render Shell៖
   ```bash
-  DB_ENGINE=sqlite SQLITE_PATH=/var/data/ecommerce.db \
+  SQLITE_PATH=/var/data/ecommerce.db \
       python scripts/backup_restore.py import --file backup.json --truncate
   python create_admin.py <admin-email> --password '<new>' --reset
   ```
 
 ៦) **ពិនិត្យ** — Logs ត្រូវបង្ហាញ៖
 ```
-   Database   : SQLite (DB_ENGINE=sqlite) → sqlite:////var/data/ecommerce.db
+   Database   : SQLite → sqlite:////var/data/ecommerce.db
    Storage DB : ✅ SQLITE_PATH ស្ថិតលើ Persistent Disk (/var/data)
 ```
 
-> 💡 បើចង់ត្រឡប់ទៅ PostgreSQL វិញ៖ `DB_ENGINE=postgres` រួច
-> `.venv/bin/python scripts/backup_restore.py import --file backup.json` (ឬប្រើ `from-postgres`)
+> 💡 ចង់ចម្លងឯកសារ SQLite ទាំងមូល (រួមទាំង Password) ចូល DB បច្ចុប្បន្ន៖
+> `SOURCE_SQLITE_PATH=/path/to/old.db .venv/bin/python scripts/backup_restore.py copy-source --truncate`
 
 ### 🧰 Backup / Restore / Migration Script
 
-`scripts/backup_restore.py` — ឧបករណ៍ផ្លាស់ទិន្នន័យរវាង Database ដោយមិនបាត់ទិន្នន័យ៖
+`scripts/backup_restore.py` — ឧបករណ៍ Backup / Restore ទិន្នន័យ (SQLite) ដោយមិនបាត់ទិន្នន័យ៖
 
 | Command | ការងារ |
 | --- | --- |
 | `export --url … --email … --password … --out backup.json` | ទាញទិន្នន័យទាំងអស់ចេញពី API (ត្រូវការ Admin) |
-| `import --file backup.json --truncate` | បញ្ចូលទិន្នន័យចូល DB បច្ចុប្បន្ន (តាម `DB_ENGINE`) |
-| `copy-source` (ឬ `from-postgres`, ប្រើ `SOURCE_DATABASE_URL`) | ចម្លងផ្ទាល់ Postgres/SQLite → DB បច្ចុប្បន្ន (រួមទាំង Password) |
+| `import --file backup.json --truncate` | បញ្ចូលទិន្នន័យចូល DB បច្ចុប្បន្ន (តាម `SQLITE_PATH`) |
+| `copy-source --source /path/old.db` (ឬ `SOURCE_SQLITE_PATH`) | ចម្លងផ្ទាល់ SQLite → SQLite (រួមទាំង Password) |
 
 API endpoint សម្រាប់ Export: `GET /api/admin/export` (Admin only, លាក់ Password)။
 
@@ -215,7 +207,7 @@ API endpoint សម្រាប់ Export: `GET /api/admin/export` (Admin only, 
 ពេល Backend ចាប់ផ្តើម `init_db()` នឹង៖
 1. បង្កើតតារាងដែលខ្វះ (`create_all`)
 2. បន្ថែម Column/Index ថ្មីៗដែលមានក្នុង Model តែគ្មានក្នុង Database ចាស់
-   (ដំណើរការទាំង SQLite និង PostgreSQL — មិនប្រើ `IF NOT EXISTS` ព្រោះ SQLite មិនគាំទ្រ)
+   (ដំណើរការលើ SQLite — មិនប្រើ `IF NOT EXISTS` ព្រោះ SQLite មិនគាំទ្រ)
 
 ក្នុង Log នឹងឃើញ៖ `🗄️ Database (SQLite): sqlite:///...` និង
 `✅ Migration: បន្ថែម products.video_url` (បើមានការបន្ថែម)។
@@ -333,7 +325,7 @@ Env vars ដែលត្រូវការ៖
 | **Start Command** = `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'` | `--workers 1` ព្រោះ WebSocket manager ស្ថិតក្នុង Memory · `--proxy-headers` ព្រោះ Render ជា Reverse Proxy |
 | **Health Check Path** = `/health` | Render ដឹងថា Service ដំណើរការ |
 | **Python Version** = ឯកសារ `.python-version` (= `3.12`) ឬ Env Var `PYTHON_VERSION=3.12.10` (Manual) | Render default ថ្មីគឺ **3.14** → បណ្ណាល័យខ្លះគ្មាន wheel · ⚠️ **មិនត្រូវដាក់ `pythonVersion:` ក្នុង `render.yaml`** (Schema បដិសេធ → Deploy Error) |
-| **Environment** = Production | បើក `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, `KHQRCC_*`, `FRONTEND_URL`, `BREVO_API_KEY`, `UPLOADTHING_TOKEN` |
+| **Environment** = Production | បើក `SECRET_KEY`, `CORS_ORIGINS`, `KHQRCC_*`, `FRONTEND_URL`, `BREVO_API_KEY`, `UPLOADTHING_TOKEN` — 🚫 **មិនត្រូវការ `DATABASE_URL` ទៀតទេ** |
 | **មិន Scale ច្រើន Instance** | WebSocket real-time ត្រូវការ Single Instance (បើចង់ Scale ត្រូវប្រើ Redis Pub/Sub) |
 | **Admin ដំបូង** | ដាក់ `ADMIN_EMAIL` + `ADMIN_PASSWORD` — បង្កើតឱ្យស្វ័យប្រវត្តិពេល Startup (ចាំបាច់ព្រោះ Free គ្មាន Shell) |
 
@@ -348,19 +340,20 @@ Env vars ដែលត្រូវការ៖
 | **Spin down ពេលទំនេរ** | ⚠️ បន្ទាប់ពី ~15 នាទី → Request ដំបូងយឺត (Cold Start) | ធម្មតាទេ — Upgrade បើចង់ឱ្យលឿនជាប់ |
 | **Region** | ✅ គ្រប់ Region | `region: singapore` (ជិតកម្ពុជាជាងគេ — `render.yaml` កំណត់រួច) |
 
-> 💡 ចង់បានទិន្នន័យ **មិនបាត់** ដោយមិនបង់លុយ៖ ប្រើ PostgreSQL ខាងក្រៅ
-> (Neon / Supabase — Free tier) រួចដាក់ `DB_ENGINE=postgres` + `DATABASE_URL`
-> (ត្រូវរត់ `scripts/backup_restore.py` ដើម្បីយកទិន្នន័យចាស់មក)។
+> 💡 ចង់បានទិន្នន័យ **មិនបាត់** លើ Render៖ ត្រូវប្រើ Plan ដែលមាន **Persistent Disk**
+> (Starter ឡើងទៅ) រួចកំណត់ `SQLITE_PATH=/var/data/ecommerce.db` (OPTION B)។
+> រូបភាព/វីដេអូ៖ ប្រើ `UPLOADTHING_TOKEN` (CDN) ដើម្បីកុំបាត់ពេល Redeploy។
 
 ### 🔍 ពិនិត្យក្រោយ Deploy (Service → Logs)
 
 ពេល Backend ចាប់ផ្តើម វានឹងបោះពុម្ព **Deployment Diagnostics** ដូចនេះ៖
 
 ```
-🗄️  Database (PostgreSQL): postgresql://***@dpg-xxxx-a/DBNAME
+🗄️  Database (SQLite): sqlite:////var/data/ecommerce.db
 ────────────────────────────────────────────────────────────────
 🚀 Environment : Render (production)
-   Database   : PostgreSQL → postgresql://***@dpg-xxxx-a/DBNAME
+   Database   : SQLite → sqlite:////var/data/ecommerce.db
+   SQLite Path: /var/data/ecommerce.db
    Storage    : ✅ UploadThing (CDN អចិន្ត្រៃយ៍)
    Email      : ✅ brevo_api → you@email.com
    KHQR/ABA   : ✅ enabled
@@ -391,8 +384,7 @@ curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
 
 | Env Var | តម្រូវ? | ឧទាហរណ៍ / កន្លែងយក |
 | --- | --- | --- |
-| `DATABASE_URL` | ✅ ត្រូវ | `postgresql://USER:PASS@dpg-xxxx-a.singapore-postgres.render.com/DBNAME` (Postgres → Connect → **External**) |
-| `DATABASE_URL_INTERNAL` | ⭐ ណែនាំ | `postgresql://USER:PASS@dpg-xxxx-a/DBNAME` (Postgres → Connect → **Internal**) — ប្រើជាមុនពេល `RENDER=true` |
+| 🚫 `DATABASE_URL` / `DATABASE_URL_INTERNAL` | មិនប្រើទៀតទេ | Backend ប្រើ **SQLite** ជានិច្ច — សូមលុប Env Var ទាំងនេះចេញពី Render (បើមាន) |
 | `SECRET_KEY` | ✅ ត្រូវ | Render បង្កើតស្វ័យប្រវត្តិ (Blueprint) ឬ string វែងសុវត្ថិភាព |
 | `CORS_ORIGINS` | ✅ ត្រូវ | `https://frontend-user-e-online.vercel.app,https://frontend-admin-e-online.vercel.app` (ដាក់រួចក្នុង `render.yaml`) |
 | `CORS_ORIGIN_REGEX` | ជម្រើស | Regex សម្រាប់ Vercel Preview URL ឧ. `^https://frontend-(user\|admin)-e-online.*\.vercel\.app$` (ដាក់រួចក្នុង `render.yaml`) |
@@ -421,14 +413,14 @@ curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
 | `OTP_EXPIRE_MINUTES` | ជម្រើស | `10` |
 
 > **Render កំណត់ដោយស្វ័យប្រវត្តិ (មិនត្រូវបំពេញដោយដៃ)៖**
-> `RENDER=true`, `PORT`, និង `DATABASE_URL*` បើភ្ជាប់ Postgres តាម Blueprint។
+> `RENDER=true` និង `PORT` (គ្មាន `DATABASE_URL` ទៀតទេ)។
 >
 > ⚠️ **ព័ត៌មាន Bakong Wallet** (Company Name · Bakong Wallet ID · Display Name ·
 > Currency · KHR rate) **មិនមែន Env Var ទេ** — វារក្សាទុកក្នុង Database
 > (`site_settings`) ហើយកំណត់តាម **Admin Panel → Settings → Bakong Wallet / KHQR payment**។
 
 > **RENDER** ត្រូវបាន Render កំណត់ដោយស្វ័យប្រវត្តិ (`RENDER=true`) —
-> code នឹងប្រើ `DATABASE_URL_INTERNAL` ដោយស្វ័យប្រវត្តិ។
+> code ប្រើវាសម្រាប់ Startup Diagnostics និងការព្រមានអំពី Persistent Disk។
 
 > **Python Version:** Render default ថ្មីគឺ **3.14** (មិនទាន់មាន wheel សម្រាប់
 > បណ្ណាល័យខ្លះទេ) — ដូច្នេះ repo នេះប្រើ **Python 3.12**។

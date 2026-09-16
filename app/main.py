@@ -182,26 +182,23 @@ def health_check():
     មិនមាន Secret ទេ — គ្រាន់តែបង្ហាញថា Database engine អ្វី ឯកសារនៅឯណា
     និងចំនួនទិន្នន័យ ដើម្បីឱ្យអ្នកអាចពិនិត្យបានដោយ `curl /health`។
     """
-    from .database import EFFECTIVE_DATABASE_URL, IS_SQLITE
+    from .database import EFFECTIVE_DATABASE_URL
 
+    path = EFFECTIVE_DATABASE_URL.replace("sqlite:///", "", 1)
+    on_disk = path.startswith("/var/data")
     info = {
         "status": "ok",
-        "engine": "sqlite" if IS_SQLITE else "postgres",
-        "url": safe_database_url_for_health(),
-    }
-
-    if IS_SQLITE:
-        path = EFFECTIVE_DATABASE_URL.replace("sqlite:///", "", 1)
-        info["file"] = path
-        info["on_persistent_disk"] = path.startswith("/var/data")
-        info["note"] = (
+        "engine": "sqlite",
+        "url": EFFECTIVE_DATABASE_URL,
+        "file": path,
+        "on_persistent_disk": on_disk,
+        "note": (
             "ឯកសារនេះស្ថិតលើ Persistent Disk (/var/data) ✓ ទិន្នន័យមិនបាត់ពេល Redeploy"
-            if info["on_persistent_disk"]
+            if on_disk
             else "⚠️ ឯកសារនេះមិននៅលើ /var/data ទេ → បាត់ពេល Redeploy "
             "(ត្រូវការ Persistent Disk + SQLITE_PATH=/var/data/ecommerce.db)"
-        )
-    else:
-        info["note"] = "ទិន្នន័យស្ថិតក្នុង PostgreSQL (មិនមែនឯកសារក្នុងម៉ាស៊ីន)"
+        ),
+    }
 
     # ចំនួនទិន្នន័យ (ស្រាលបំផុត) — ដើម្បីដឹងថា Database ទទេ ឬមានទិន្នន័យ
     try:
@@ -231,19 +228,12 @@ def health_check():
     return info
 
 
-def safe_database_url_for_health() -> str:
-    """URL ដោយលាក់ Password (សម្រាប់ /health)"""
-    from .database import safe_database_url
-
-    return safe_database_url()
-
-
 # ============================================================
 # Deployment Diagnostics — បង្ហាញស្ថានភាព Environment ពេល Startup
 # មើលបន្ទាត់ទាំងនេះក្នុង Render -> Service -> Logs
 # ============================================================
 def _deploy_diagnostics():
-    from .database import IS_SQLITE, safe_database_url
+    from .database import EFFECTIVE_DATABASE_URL
     from .email_sender import email_status
     from .routers.payments import payment_configured
     from .storage import UPLOAD_DIR, cloudinary_configured, uploadthing_configured
@@ -256,33 +246,11 @@ def _deploy_diagnostics():
         f"🚀 Environment : {'Render (production)' if on_render else 'Local / other'}",
         flush=True,
     )
-    print(
-        f"   Database   : {'SQLite' if IS_SQLITE else 'PostgreSQL'} "
-        f"(DB_ENGINE={app_settings.db_engine}) → {safe_database_url()}",
-        flush=True,
-    )
-    if IS_SQLITE:
-        print(f"   SQLite Path: {app_settings.sqlite_file_path}", flush=True)
-        if app_settings.clean_database_url or app_settings.clean_database_url_internal:
-            print(
-                "   Note        : DATABASE_URL មាន តែត្រូវបានមិនគិត ព្រោះ DB_ENGINE=sqlite "
-                "→ Postgres data មិនត្រូវបានប្រើ (ធ្វើ Migration បើចង់បានទិន្នន័យចាស់)",
-                flush=True,
-            )
-
-    # ⚠️ DB_ENGINE=postgres តែគ្មាន DATABASE_URL → បាន Fallback ទៅ SQLite
-    if app_settings.db_engine == "postgres" and not (
-        app_settings.clean_database_url or app_settings.clean_database_url_internal
-    ):
-        warnings.append(
-            "DB_ENGINE=postgres ប៉ុន្តែគ្មាន DATABASE_URL ត្រឹមត្រូវ — ប្រព័ន្ធបានប្តូរទៅ SQLite វិញ"
-        )
-
-    # ⚠️ Env Var Database ដែលមានតម្លៃគំរូ (ឧ. dpg-xxxx-a) -> មិនគិត
-    warnings.extend(app_settings.database_warnings)
+    print(f"   Database   : SQLite → {EFFECTIVE_DATABASE_URL}", flush=True)
+    print(f"   SQLite Path: {app_settings.sqlite_file_path}", flush=True)
 
     # ⚠️ SQLite លើ Render ត្រូវការ Persistent Disk មិនដូច្នេះទិន្នន័យនឹងបាត់
-    if on_render and IS_SQLITE:
+    if on_render:
         path = app_settings.sqlite_file_path
         if path.startswith("/var/data"):
             print(
@@ -293,7 +261,7 @@ def _deploy_diagnostics():
             warnings.append(
                 "SQLite លើ Render គ្មាន Persistent Disk → ទិន្នន័យនឹងបាត់ពេល Redeploy! "
                 "សូមកំណត់ SQLITE_PATH=/var/data/ecommerce.db រួចបន្ថែម Persistent Disk "
-                "(ឬប្រើ DB_ENGINE=postgres + DATABASE_URL)"
+                "(Plan `starter` ឡើងទៅ — មើល OPTION B ក្នុង render.yaml)"
             )
 
     if uploadthing_configured():

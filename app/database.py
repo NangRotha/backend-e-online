@@ -1,94 +1,60 @@
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
-from pathlib import Path
 import os
-import time
 
-from .config import BACKEND_DIR, settings
+from .config import DEFAULT_SQLITE_FILE, settings
 
-# ឯកសារ SQLite ដើម (ប្រើជា Fallback បើ SQLITE_PATH បង្កើតមិនបាន)
-DEFAULT_SQLITE_FILE = BACKEND_DIR / "ecommerce.db"
+# ============================================================
+# 🗄️ Database = **SQLite តែមួយប៉ុណ្ណោះ**
+# ------------------------------------------------------------
+# - ឯកសារ DB ស្ថិតតាម `SQLITE_PATH` ឬ `backend/ecommerce.db` ដោយស្វ័យប្រវត្តិ
+#   (តារាង + Migration រត់ខ្លួនឯងពេល Startup តាម `init_db()`)
+# - បើ `SQLITE_PATH` ចង្អុលទៅថតដែលសរសេរមិនបាន (ឧ. /var/data លើ Render
+#   ដែលគ្មាន Persistent Disk) -> Fallback ទៅ `backend/ecommerce.db` វិញ
+# ============================================================
+DATABASE_URL = f"sqlite:///{settings.sqlite_file_path}"
 
-# យក Database URL ពី Environment Variables
-# - បើកំណត់ DATABASE_URL / DATABASE_URL_INTERNAL -> PostgreSQL (Render)
-# - បើអត់កំណត់ -> SQLite ក្នុងម៉ាស៊ីន (backend/ecommerce.db) ដោយស្វ័យប្រវត្តិ
-DATABASE_URL = settings.active_database_url
-IS_SQLITE = DATABASE_URL.startswith("sqlite")
-DB_ENGINE_LABEL = "SQLite" if IS_SQLITE else "PostgreSQL"
-# URL ដែលកំពុងប្រើពិតប្រាកដ (អាចខុសពី DATABASE_URL បើ SQLite Fallback ទៅ backend/)
+# URL ដែលកំពុងប្រើពិតប្រាកដ (ខុសពី DATABASE_URL បើមាន Fallback)
 EFFECTIVE_DATABASE_URL = DATABASE_URL
 
 
 def _create_engine():
-    """បង្កើត Engine តាមប្រភេទ Database (SQLite ឬ PostgreSQL)"""
+    """បង្កើត SQLite Engine (បង្កើតថតមេរបស់ឯកសារ DB បើចាំបាច់)"""
     global EFFECTIVE_DATABASE_URL
 
-    if IS_SQLITE:
-        # ពិនិត្យ/បង្កើតថតមេរបស់ឯកសារ SQLite (ឧ. /var/data)
-        # ⚠️ បើបង្កើតមិនបាន (ឧ. Render free plan គ្មាន Disk -> /var/data មិនមាន)
-        # នោះត្រូវ Fallback ទៅ `backend/ecommerce.db` វិញ ដើម្បីកុំឱ្យ App Crash
-        target = _sqlite_path_from_url(DATABASE_URL)
-        directory = os.path.dirname(target) if target else ""
-        if directory:
-            try:
-                os.makedirs(directory, exist_ok=True)
-            except Exception as exc:  # noqa: BLE001
-                fallback = f"sqlite:///{DEFAULT_SQLITE_FILE}"
-                print(
-                    f"⚠️  SQLite: មិនអាចបង្កើតថត '{directory}' ({type(exc).__name__}) "
-                    f"→ ប្រើ '{DEFAULT_SQLITE_FILE}' ជំនួស។ "
-                    "(លើ Render សូមបន្ថែម Persistent Disk សម្រាប់ /var/data)",
-                    flush=True,
-                )
-                EFFECTIVE_DATABASE_URL = fallback
-                return create_engine(
-                    fallback,
-                    connect_args={"check_same_thread": False},
-                    pool_pre_ping=True,
-                )
-        # SQLite — ត្រូវការ check_same_thread=False ព្រោះ FastAPI ប្រើច្រើន Thread
-        return create_engine(
-            DATABASE_URL,
-            connect_args={"check_same_thread": False},
-            pool_pre_ping=True,
-        )
-    # PostgreSQL — connect_timeout: កុំឱ្យជាប់រង់ចាំយូរពេល DNS / បណ្តាញធ្លាក់
+    target = settings.sqlite_file_path
+    directory = os.path.dirname(target)
+    if directory:
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            # ⚠️ ឧ. Render Free Plan: /var/data មិនមាន (គ្មាន Persistent Disk)
+            fallback = f"sqlite:///{DEFAULT_SQLITE_FILE}"
+            print(
+                f"⚠️  SQLite: មិនអាចបង្កើតថត '{directory}' ({type(exc).__name__}) "
+                f"→ ប្រើ '{DEFAULT_SQLITE_FILE}' ជំនួស។ "
+                "(លើ Render សូមបន្ថែម Persistent Disk សម្រាប់ /var/data)",
+                flush=True,
+            )
+            EFFECTIVE_DATABASE_URL = fallback
+            return create_engine(
+                fallback,
+                connect_args={"check_same_thread": False},
+                pool_pre_ping=True,
+            )
+
+    # SQLite ត្រូវការ `check_same_thread=False` ព្រោះ FastAPI ប្រើច្រើន Thread
     return create_engine(
         DATABASE_URL,
-        connect_args={"sslmode": "require", "connect_timeout": 10},
+        connect_args={"check_same_thread": False},
         pool_pre_ping=True,
     )
-
-
-def _sqlite_path_from_url(url: str) -> str:
-    """ដកផ្លូវឯកសារចេញពី SQLite URL (sqlite:////var/data/x.db -> /var/data/x.db)"""
-    for prefix in ("sqlite:///", "sqlite://"):
-        if url.startswith(prefix):
-            path = url[len(prefix):]
-            if path.startswith("/") and not url.startswith("sqlite:////"):
-                path = "/" + path.lstrip("/")  # sqlite:///relative -> relative (រក្សាដូចដើម)
-            return path
-    return ""
 
 
 engine = _create_engine()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
-# ព្យាយាមភ្ជាប់ឡើងវិញពេល DNS / បណ្តាញធ្លាក់មួយភ្លែត (តែ PostgreSQL ប៉ុណ្ណោះ)
-DB_MAX_ATTEMPTS = 10
-DB_RETRY_DELAY_SECONDS = 3
-
-
-def safe_database_url(url: str = None) -> str:
-    """បង្ហាញ Database URL ដែលកំពុងប្រើ ដោយលាក់ Username/Password"""
-    value = url or EFFECTIVE_DATABASE_URL
-    if "@" in value:
-        scheme = value.split("://", 1)[0] if "://" in value else ""
-        return f"{scheme}://***@{value.split('@', 1)[1]}"
-    return value
-
 
 def _column_default_sql(col) -> str:
     """បង្កើត DEFAULT សម្រាប់ ALTER TABLE ADD COLUMN (បើ Column មាន default ធម្មតា)"""
@@ -109,8 +75,8 @@ def _migrate(conn) -> list:
     """Migration ស្វ័យប្រវត្តិ — បន្ថែម Column/Index ដែលមានក្នុង Model
     តែគ្មានក្នុង Database ដែលមានស្រាប់។
 
-    ដំណើរការទាំង **PostgreSQL** និង **SQLite** (មិនប្រើ
-    `ALTER TABLE ... IF NOT EXISTS` ព្រោះ SQLite មិនគាំទ្រ)។
+    ធ្វើការជាមួយ SQLite (មិនប្រើ `ALTER TABLE ... IF NOT EXISTS`
+    ព្រោះ SQLite មិនគាំទ្រ)។
     """
     inspector = inspect(conn)
     existing_tables = set(inspector.get_table_names())
@@ -160,7 +126,6 @@ def _init_db_once() -> list:
 
     - តារាងថ្មី -> `Base.metadata.create_all()` បង្កើតឱ្យ
     - Column/Index ថ្មី (ក្នុង Model តែគ្មានក្នុង DB ចាស់) -> `_migrate()` បន្ថែមឱ្យ
-    ដំណើរការទាំង **SQLite** និង **PostgreSQL**
     """
     # ធានាថា Model ទាំងអស់ត្រូវបានចុះឈ្មោះក្នុង `Base.metadata` មុនពេល create_all
     # (import ក្នុង Function ដើម្បីកុំឱ្យមាន Circular Import)
@@ -172,53 +137,24 @@ def _init_db_once() -> list:
         conn.commit()
     return changes
 
+
 def init_db():
-    """បង្កើតតារាង + Migration ព្រមទាំងព្យាយាមភ្ជាប់ឡើងវិញ (តែ PostgreSQL)
+    """បង្កើតតារាង + Migration (SQLite — គ្មាន Network ដូច្នេះព្យាយាមតែម្តង)"""
+    print(f"🗄️  Database (SQLite): {EFFECTIVE_DATABASE_URL}", flush=True)
 
-    - **SQLite** (Local / File)៖ អត់មានបញ្ហា Network -> ព្យាយាមតែម្តង
-    - **PostgreSQL** (Render)៖ ព្យាយាម 10 ដង ព្រោះ DNS/Network អាចធ្លាក់មួយភ្លែត
-    """
-    label = "SQLite" if IS_SQLITE else "PostgreSQL"
-    print(f"🗄️  Database ({label}): {safe_database_url()}", flush=True)
+    try:
+        changes = _init_db_once()
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Could not initialise the SQLite database ({EFFECTIVE_DATABASE_URL}).\n"
+            "Possible causes:\n"
+            "  1. ផ្លូវឯកសារ SQLite ខុស ឬថតគ្មានសិទ្ធិសរសេរ (SQLITE_PATH)\n"
+            "  2. ឯកសារ DB ខូច ឬ Lock ដោយ Process ផ្សេង (សូមបិទ Server ចាស់)\n"
+            f"Last error: {type(exc).__name__}: {exc}"
+        ) from exc
 
-    attempts = 1 if IS_SQLITE else DB_MAX_ATTEMPTS
-    last_exc = None
-
-    for attempt in range(1, attempts + 1):
-        try:
-            changes = _init_db_once()
-            if changes:
-                print(f"✅ Migration: បន្ថែម {', '.join(changes)}", flush=True)
-            return
-        except Exception as e:
-            last_exc = e
-            print(
-                f"⚠️  Database connection failed (attempt {attempt}/{attempts}): "
-                f"{type(e).__name__}: {e}",
-                flush=True,
-            )
-            if attempt < attempts:
-                print(
-                    f"    Retrying in {DB_RETRY_DELAY_SECONDS}s... "
-                    f"(កំពុងព្យាយាមភ្ជាប់ Database ឡើងវិញ)",
-                    flush=True,
-                )
-                time.sleep(DB_RETRY_DELAY_SECONDS)
-
-    hint = (
-        "  1. ផ្លូវឯកសារ SQLite ខុស ឬថតគ្មានសិទ្ធិសរសេរ (SQLITE_PATH)\n"
-        if IS_SQLITE
-        else "  1. No internet / DNS is down — check your connection.\n"
-        "  2. The database host is unreachable / Postgres ផុតកំណត់\n"
-    )
-    raise RuntimeError(
-        f"Could not connect to the database ({label}: {safe_database_url()}) "
-        f"after {attempts} attempt(s).\n"
-        "Possible causes:\n"
-        f"{hint}"
-        "  3. Wrong DATABASE_URL in backend/.env — បើចង់ប្រើ SQLite សូមទុក DATABASE_URL ទទេ\n"
-        f"Last error: {last_exc}"
-    ) from last_exc
+    if changes:
+        print(f"✅ Migration: បន្ថែម {', '.join(changes)}", flush=True)
 
 
 def get_db():

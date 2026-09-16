@@ -1,22 +1,17 @@
 """
-Backup / Restore / Database Migration
-=====================================
-ឧបករណ៍ផ្លាស់ទិន្នន័យរវាង Database (PostgreSQL ↔ SQLite) ដោយមិនបាត់ទិន្នន័យ។
+Backup / Restore — Database Migration (SQLite → SQLite)
+======================================================
+ឧបករណ៍ Backup / Restore / ផ្លាស់ទិន្នន័យ (SQLite តែមួយប៉ុណ្ណោះ) ដោយមិនបាត់ទិន្នន័យ។
 
 Usage:
     # 1) Export ចេញពី Backend ដែលកំពុងដំណើរការ (តាម API — ត្រូវការគណនី Admin)
-    .venv/bin/python scripts/backup_restore.py export \\
-        --url https://backend-e-online.onrender.com \\
-        --email admin@example.com --password 'admin12345' \\
-        --out backup.json
+    .venv/bin/python scripts/backup_restore.py export --url https://backend-e-online.onrender.com --email admin@example.com --password 'admin12345' --out backup.json
 
-    # 2) Import ចូល Database បច្ចុប្បន្ន (តាម DB_ENGINE / DATABASE_URL)
-    #    បើចង់ចូល SQLite សូមកំណត់ DB_ENGINE=sqlite ជាមុន
+    # 2) Import ចូល Database SQLite បច្ចុប្បន្ន (តាម SQLITE_PATH ឬ backend/ecommerce.db)
     .venv/bin/python scripts/backup_restore.py import --file backup.json --truncate
 
-    # 3) ចម្លងផ្ទាល់ពី PostgreSQL → Database បច្ចុប្បន្ន (មិនតាម API, passwords គ្រប់)
-    SOURCE_DATABASE_URL='postgresql://USER:PASS@HOST/DB' \\
-        .venv/bin/python scripts/backup_restore.py from-postgres --truncate
+    # 3) ចម្លងផ្ទាល់ពីឯកសារ SQLite ដើម → Database បច្ចុប្បន្ន (មិនតាម API, passwords គ្រប់)
+    SOURCE_SQLITE_PATH=/path/to/old-ecommerce.db .venv/bin/python scripts/backup_restore.py copy-source --truncate
 
 ចំណាំ: ក្រោយ `import` គណនី Users នឹងគ្មានពាក្យសម្ងាត់ដើម (Export លាក់វា)
       ដូច្នេះត្រូវកំណត់ពាក្យសម្ងាត់ Admin ឡើងវិញ៖
@@ -26,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import uuid
 from datetime import date, datetime
@@ -40,10 +36,8 @@ from app import models  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import (  # noqa: E402
     DATABASE_URL,
-    DB_ENGINE_LABEL,
     Base,
     engine,
-    safe_database_url,
 )
 
 CHUNK = 500
@@ -91,7 +85,7 @@ def cmd_export(args):
 
 
 # ============================================================
-# 2) IMPORT ចូល Database បច្ចុប្បន្ន (តាម DB_ENGINE)
+# 2) IMPORT ចូល Database បច្ចុប្បន្ន (SQLite — SQLITE_PATH)
 # ============================================================
 def _coerce_value(column, value):
     """បំលែងតម្លៃពី JSON (string) ទៅជាប្រភេទដែល Database ត្រូវការ
@@ -132,7 +126,7 @@ def _coerce_value(column, value):
                 return value
         return value
 
-    # Postgres → SQLite៖ bool/number ធម្មតាមកជា Python object ស្រាប់
+    # SQLite៖ bool/number ធម្មតាមកជា Python object ស្រាប់
     if python_type is bool and not isinstance(value, bool):
         return bool(value)
     return value
@@ -175,7 +169,7 @@ def _import_data(data: dict, truncate: bool, source_label: str):
                         row["hashed_password"] = app_auth.hash_password(uuid.uuid4().hex)
             counts[table.name] = _insert_rows(conn, table, rows, truncate)
 
-    print(f"✅ Imported → {DB_ENGINE_LABEL}: {safe_database_url()}")
+    print(f"✅ Imported → SQLite: {DATABASE_URL}")
     print(f"   (source: {source_label})")
     for name, count in counts.items():
         if count:
@@ -197,28 +191,28 @@ def cmd_import(args):
 
 
 # ============================================================
-# 3) ចម្លងផ្ទាល់ PostgreSQL → Database បច្ចុប្បន្ន (Passwords គ្រប់)
+# 3) ចម្លងផ្ទាល់ពីឯកសារ SQLite ដើម → Database បច្ចុប្បន្ន (Passwords គ្រប់)
 # ============================================================
-def cmd_from_postgres(args):
-    source_url = (args.source or "").strip()
-    if not source_url:
-        print("❌ សូមផ្តល់ SOURCE_DATABASE_URL ឬ --source")
+def cmd_copy_source(args):
+    # ទទួលផ្លូវឯកសារ SQLite ពី --source ឬ Env Var SOURCE_SQLITE_PATH
+    raw = (args.source or os.environ.get("SOURCE_SQLITE_PATH", "")).strip()
+    if not raw:
+        print("❌ សូមផ្តល់ SOURCE_SQLITE_PATH ឬ --source /path/to/ecommerce.db")
         sys.exit(1)
+
+    source_path = Path(raw.replace("sqlite:///", "", 1))
+    if not source_path.exists():
+        print(f"❌ រកមិនឃើញឯកសារ SQLite: {source_path}")
+        sys.exit(1)
+
+    source_url = f"sqlite:///{source_path}"
     if source_url == DATABASE_URL:
         print("⚠️  Source និង Target ជា Database តែមួយ — ឈប់ដើម្បីសុវត្ថិភាព")
         sys.exit(1)
 
-    # គាំទ្រទាំង PostgreSQL និង SQLite ជា Source (សម្រាប់ Test ឬផ្លាស់ពី SQLite → SQLite)
-    if source_url.startswith("sqlite"):
-        source = create_engine(
-            source_url, connect_args={"check_same_thread": False}
-        )
-    else:
-        source = create_engine(
-            source_url, connect_args={"sslmode": "require", "connect_timeout": 15}
-        )
-    print(f"📤 Source: {safe_database_url(source_url)}")
-    print(f"📥 Target: {DB_ENGINE_LABEL} — {safe_database_url()}")
+    source = create_engine(source_url, connect_args={"check_same_thread": False})
+    print(f"📤 Source: {source_url}")
+    print(f"📥 Target: SQLite — {DATABASE_URL}")
 
     Base.metadata.create_all(bind=engine)
     counts = {}
@@ -256,14 +250,15 @@ def main():
     p_import.add_argument("--truncate", action="store_true", help="លុបទិន្នន័យចាស់មុន Import")
     p_import.set_defaults(func=cmd_import)
 
-    p_pg = sub.add_parser(
+    p_copy = sub.add_parser(
         "copy-source",
-        aliases=["from-postgres"],
-        help="ចម្លងពី Database ដើម (PostgreSQL ឬ SQLite) ចូល DB បច្ចុប្បន្ន",
+        help="ចម្លងពីឯកសារ SQLite ដើម ចូល DB បច្ចុប្បន្ន (Passwords គ្រប់)",
     )
-    p_pg.add_argument("--source", default="", help="SOURCE_DATABASE_URL (ឬប្រើ env)")
-    p_pg.add_argument("--truncate", action="store_true")
-    p_pg.set_defaults(func=cmd_from_postgres)
+    p_copy.add_argument(
+        "--source", default="", help="ផ្លូវឯកសារ SQLite (ឬប្រើ Env Var SOURCE_SQLITE_PATH)"
+    )
+    p_copy.add_argument("--truncate", action="store_true")
+    p_copy.set_defaults(func=cmd_copy_source)
 
     args = parser.parse_args()
     args.func(args)

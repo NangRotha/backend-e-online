@@ -245,8 +245,8 @@ def toggle_discount(
 def export_data(db: Session = Depends(_admin)):
     """Admin: Export ទិន្នន័យទាំងអស់ជា JSON (សម្រាប់ Backup ឬ ផ្លាស់ Database)
 
-    ប្រើជាមួយ `scripts/backup_restore.py import` ដើម្បីផ្លាស់ពី
-    PostgreSQL → SQLite (ឬត្រឡប់វិញ) ដោយមិនបាត់ទិន្នន័យ។
+    ប្រើជាមួយ `scripts/backup_restore.py import` ដើម្បីផ្លាស់ទិន្នន័យពី
+    SQLite មួយ → SQLite មួយផ្សេងទៀត (ឧ. Local → Render) ដោយមិនបាត់ទិន្នន័យ។
 
     ចំណាំ: Users ត្រូវបាន Export ដោយគ្មាន `hashed_password` (ការពារសុវត្ថិភាព)
     """
