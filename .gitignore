@@ -4,6 +4,11 @@
 # Uploaded images
 uploads/
 
+# SQLite database (Local dev)
+*.db
+*.sqlite3
+*.db-journal
+
 # Python
 __pycache__/
 *.py[cod]

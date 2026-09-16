@@ -37,9 +37,18 @@ _PRODUCTION_ORIGINS = [
     "https://frontend-user-e-online.vercel.app",
     "https://frontend-admin-e-online.vercel.app",
 ]
+# បញ្ជី Origin ទាំងអស់ដែលអនុញ្ញាត (Dev + Production + CORS_ORIGINS ពី Environment)
+_CORS_ORIGINS = [
+    *_DEV_ORIGINS,
+    *_PRODUCTION_ORIGINS,
+    *app_settings.cors_origins_list,
+]
+_cors_regex = (app_settings.CORS_ORIGIN_REGEX or "").strip()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[*_DEV_ORIGINS, *_PRODUCTION_ORIGINS, *app_settings.cors_origins_list],
+    allow_origins=_CORS_ORIGINS,
+    # Regex ជាជម្រើស — សម្រាប់ Vercel Preview URL ដែលផ្លាស់ប្តូររាល់ពេល Deploy
+    **({"allow_origin_regex": _cors_regex} if _cors_regex else {}),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,3 +87,89 @@ def read_root():
 def health_check():
     """សម្រាប់ Render Health Check (Render ហៅ endpoint នេះរៀងរាល់ពេល)"""
     return {"status": "ok"}
+
+
+# ============================================================
+# Deployment Diagnostics — បង្ហាញស្ថានភាព Environment ពេល Startup
+# មើលបន្ទាត់ទាំងនេះក្នុង Render -> Service -> Logs
+# ============================================================
+def _deploy_diagnostics():
+    from .database import IS_SQLITE, safe_database_url
+    from .email_sender import email_status
+    from .routers.payments import payment_configured
+    from .storage import UPLOAD_DIR, cloudinary_configured, uploadthing_configured
+
+    on_render = app_settings.RENDER.lower() == "true"
+    warnings = []
+
+    print("─" * 64, flush=True)
+    print(
+        f"🚀 Environment : {'Render (production)' if on_render else 'Local / other'}",
+        flush=True,
+    )
+    print(
+        f"   Database   : {'SQLite' if IS_SQLITE else 'PostgreSQL'} "
+        f"→ {safe_database_url()}",
+        flush=True,
+    )
+
+    # ⚠️ SQLite លើ Render ត្រូវការ Persistent Disk មិនដូច្នេះទិន្នន័យនឹងបាត់
+    if on_render and IS_SQLITE:
+        path = app_settings.sqlite_file_path
+        if not path.startswith("/var/data"):
+            warnings.append(
+                "SQLite លើ Render គ្មាន Persistent Disk → ទិន្នន័យនឹងបាត់ពេល Redeploy! "
+                "សូមកំណត់ DATABASE_URL (Postgres) ឬ SQLITE_PATH=/var/data/ecommerce.db "
+                "រួចបន្ថែម Persistent Disk"
+            )
+
+    if uploadthing_configured():
+        print("   Storage    : ✅ UploadThing (CDN អចិន្ត្រៃយ៍)", flush=True)
+    elif cloudinary_configured():
+        print("   Storage    : ✅ Cloudinary (CDN អចិន្ត្រៃយ៍)", flush=True)
+    else:
+        print(f"   Storage    : ⚠️  Local Disk → {UPLOAD_DIR}", flush=True)
+        if on_render:
+            warnings.append(
+                "គ្មាន UploadThing/Cloudinary → រូបភាព/វីដេអូ Upload នឹងបាត់ពេល Redeploy "
+                "(កំណត់ UPLOADTHING_TOKEN ឬ UPLOAD_DIR=/var/data/uploads + Disk)"
+            )
+
+    email = email_status()
+    if email["configured"]:
+        print(
+            f"   Email      : ✅ {email['method']} → {email['sender']}",
+            flush=True,
+        )
+    else:
+        print(
+            "   Email      : ⚠️  not configured (receipt email នឹងមិនផ្ញើ)",
+            flush=True,
+        )
+
+    print(
+        f"   KHQR/ABA   : {'✅ enabled' if payment_configured() else '⚠️  not configured (ខ្វះ KHQRCC keys)'}",
+        flush=True,
+    )
+    print(
+        f"   CORS       : {len(_CORS_ORIGINS)} origin(s)"
+        f"{' + regex' if _cors_regex else ''}",
+        flush=True,
+    )
+
+    # ⚠️ SECRET_KEY Default = JWT អាចក្លែងបាន
+    if app_settings.SECRET_KEY == "your-secret-key-change-this":
+        if on_render:
+            warnings.append(
+                "SECRET_KEY កំពុងប្រើតម្លៃ Default — សូមកំណត់ SECRET_KEY ថ្មីក្នុង "
+                "Render → Environment (មិនដូច្នេះ JWT អាចក្លែងបាន)"
+            )
+        else:
+            print("   SECRET_KEY : ⚠️  default value (ok for local dev)", flush=True)
+
+    for w in warnings:
+        print(f"⚠️  WARNING: {w}", flush=True)
+    print("─" * 64, flush=True)
+
+
+_deploy_diagnostics()

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # ប្រើតែពេល Deploy លើ Render ដែល hostname ខាងក្នុងអាចភ្ជាប់បាន
     DATABASE_URL_INTERNAL: str = ""
 
+    # SQLite — ប្រើពេលគ្មាន PostgreSQL (Local Development / Deploy តូច)
+    # បើទុកទទេ -> បង្កើតឯកសារ `backend/ecommerce.db` ដោយស្វ័យប្រវត្តិ
+    # ឧ. /var/data/ecommerce.db (បើប្រើ Render Persistent Disk)
+    SQLITE_PATH: str = ""
+
     # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ នៅពេលដំណើរការលើ Render
     RENDER: str = ""
 
@@ -29,6 +34,10 @@ class Settings(BaseSettings):
     # (ញែកដោយសញ្ញាក្បៀស) ឧ. https://shop.example.com,https://admin.example.com
     # Dev localhost តែងតែត្រូវបានអនុញ្ញាតដោយស្វ័យប្រវត្តិ
     CORS_ORIGINS: str = ""
+
+    # CORS Regex (ជាជម្រើស) — សម្រាប់ Vercel Preview Deployment ដែល URL ផ្លាស់ប្តូររាល់ដង
+    # ឧ. ^https://frontend-(user|admin)-e-online.*\.vercel\.app$
+    CORS_ORIGIN_REGEX: str = ""
 
     SECRET_KEY: str = "your-secret-key-change-this"
     ALGORITHM: str = "HS256"
@@ -81,13 +90,24 @@ class Settings(BaseSettings):
 
     @property
     def active_database_url(self) -> str:
-        """ជ្រើសរើស Database URL ត្រឹមត្រូវតាមបរិស្ថានដំណើរការ។
-        - នៅលើ Render: ប្រើ Internal Hostname (លឿន និងសុវត្ថិភាពជាង)
-        - នៅ Local / Vercel: ប្រើ External Hostname
+        """ជ្រើសរើស Database ត្រឹមត្រូវតាមបរិស្ថានដំណើរការ៖
+
+        1. នៅលើ Render ហើយមាន `DATABASE_URL_INTERNAL` -> ប្រើ Internal (លឿន និងសុវត្ថិភាពជាង)
+        2. បើកំណត់ `DATABASE_URL` -> ប្រើវា (PostgreSQL ឬ SQLite)
+        3. បើគ្មានទាំងពីរ -> ប្រើ **SQLite** ក្នុងម៉ាស៊ីន (`backend/ecommerce.db`)
+           ដូច្នេះ Backend អាចដំណើរការបានភ្លាមៗដោយមិនចាំបាច់បើក PostgreSQL
         """
         if self.RENDER.lower() == "true" and self.DATABASE_URL_INTERNAL:
             return self.DATABASE_URL_INTERNAL
-        return self.DATABASE_URL
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return f"sqlite:///{self.sqlite_file_path}"
+
+    @property
+    def sqlite_file_path(self) -> str:
+        """ផ្លូវឯកសារ SQLite (បើកំណត់ SQLITE_PATH -> ប្រើវា បើអត់ -> backend/ecommerce.db)"""
+        custom = (self.SQLITE_PATH or "").strip()
+        return custom or str(BACKEND_DIR / "ecommerce.db")
 
     @property
     def cors_origins_list(self) -> list:

@@ -15,25 +15,40 @@
 #     (កុំ Scale ទៅច្រើន instance ព្រោះ connection manager ស្ថិតក្នុង Memory)
 services:
   - type: web
-    name: ecommerce-api
+    name: backend-e-online
     runtime: python
     pythonVersion: 3.12.8
     plan: free
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # --workers 1 : WebSocket manager ស្ថិតក្នុង Memory -> ត្រូវការ Single Instance
+    # --proxy-headers : Render ជា Reverse Proxy (ត្រូវអាន X-Forwarded-*)
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'
     healthCheckPath: /health
+    # បើចង់រក្សាទិន្នន័យ SQLite + រូបភាព Upload លើ Render (ត្រូវការ Plan ដែលមាន Disk)៖
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1
     envVars:
       # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ
       - key: SECRET_KEY
         generateValue: true
       # Origin ដែលអនុញ្ញាតឱ្យភ្ជាប់មក API (ញែកដោយសញ្ញាក្បៀស)
-      # ឧ. https://your-shop.vercel.app,https://your-admin.vercel.app
+      # ឧ. https://frontend-user-e-online.vercel.app,https://frontend-admin-e-online.vercel.app
       - key: CORS_ORIGINS
+        sync: false
+      # ជាជម្រើស: Regex សម្រាប់ Vercel Preview URL ដែលផ្លាស់ប្តូររាល់ពេល Deploy
+      # ឧ. ^https://frontend-(user|admin)-e-online.*\.vercel\.app$
+      - key: CORS_ORIGIN_REGEX
         sync: false
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_INTERNAL
+        sync: false
+      # SQLite (ជម្រើសជំនួស PostgreSQL) — បើចង់ប្រើ ត្រូវបន្ថែម Persistent Disk
+      # រួចទុក DATABASE_URL ទទេ ហើយកំណត់ SQLITE_PATH=/var/data/ecommerce.db
+      - key: SQLITE_PATH
         sync: false
       - key: SMTP_HOST
         sync: false

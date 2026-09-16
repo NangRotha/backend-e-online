@@ -5,7 +5,13 @@ from pathlib import Path
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
-from ..storage import ALLOWED_EXTENSIONS, save_upload, delete_uploads_by_urls
+from ..storage import (
+    ALLOWED_EXTENSIONS,
+    ALLOWED_VIDEO_EXTENSIONS,
+    save_upload,
+    delete_upload_by_url,
+    delete_uploads_by_urls,
+)
 from ..ws_manager import broadcast_products_changed
 
 router = APIRouter(prefix="/api", tags=["Products"])
@@ -22,18 +28,24 @@ def _normalize_images(data: dict) -> dict:
     data["image_url"] = images[0] if images else (data.get("image_url") or "")
     return data
 
-# Admin: Upload រូបភាពពីកុំព្យូទ័រ (Main / Supporting images) — Cloudinary (បើកំណត់)
+# Admin: Upload រូបភាព ឬ **វីដេអូ** ពីកុំព្យូទ័រ (Product images / Product video)
+# kind=image -> jpg/png/webp... | kind=video -> mp4/webm/mov...
 @router.post("/admin/upload")
 async def upload_image(
     file: UploadFile = File(...),
+    kind: str = "image",
     admin: models.User = Depends(get_current_admin),
 ):
+    if kind not in ("image", "video"):
+        raise HTTPException(status_code=400, detail="kind must be 'image' or 'video'")
+
     filename = file.filename or ""
     ext = Path(filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    allowed = ALLOWED_VIDEO_EXTENSIONS if kind == "video" else ALLOWED_EXTENSIONS
+    if ext not in allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext or 'none'}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+            detail=f"Unsupported {kind} file type '{ext or 'none'}'. Allowed: {', '.join(sorted(allowed))}",
         )
 
     content = await file.read()
@@ -82,10 +94,21 @@ def update_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
     data = _normalize_images(product.dict(exclude_unset=True))
-    # លុបរូបភាពដែលលែងប្រើពី Cloudinary / Local Disk (Update)
-    old_urls = set(filter(None, [db_product.image_url or ""] + list(db_product.images or [])))
-    new_urls = set(filter(None, data.get("images") or []))
-    delete_uploads_by_urls(old_urls - new_urls)
+
+    # លុបរូបភាពដែលលែងប្រើ (តែពេលមានការផ្ញើ images/image_url មកប៉ុណ្ណោះ —
+    # បើអត់ នោះជាការកែតម្រូវផ្នែកផ្សេង ហើយរូបភាពត្រូវរក្សាទុកដដែល)
+    if "images" in data or "image_url" in data:
+        old_urls = set(filter(None, [db_product.image_url or ""] + list(db_product.images or [])))
+        new_urls = set(filter(None, data.get("images") or []))
+        delete_uploads_by_urls(old_urls - new_urls)
+
+    # លុបវីដេអូចាស់ បើមានការប្តូរវីដេអូថ្មី
+    if "video_url" in data:
+        old_video = (db_product.video_url or "").strip()
+        new_video = (data.get("video_url") or "").strip()
+        if old_video and old_video != new_video:
+            delete_upload_by_url(old_video)
+
     for key, value in data.items():
         setattr(db_product, key, value)
     db.commit()
@@ -105,8 +128,8 @@ def delete_product(
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
-    # លុបរូបភាពទាំងអស់ពី Cloudinary / Local Disk ផង (Delete)
-    urls = [db_product.image_url or ""] + list(db_product.images or [])
+    # លុបរូបភាព + វីដេអូ ទាំងអស់ពី UploadThing / Cloudinary / Local Disk ផង (Delete)
+    urls = [db_product.image_url or "", db_product.video_url or ""] + list(db_product.images or [])
     delete_uploads_by_urls(urls)
     db.delete(db_product)
     db.commit()

@@ -1,7 +1,21 @@
+# ============================================================
+# Web framework (uvicorn[standard] = រួមទាំង websockets សម្រាប់ Real-time)
+# ⚠️ ត្រូវការ [standard] ដើម្បីឱ្យ WebSocket (orders_changed, products_changed...)
+#    ដំណើរការលើ Render — បើគ្មាន websockets នោះ /ws/products នឹង Error
+# ============================================================
 fastapi==0.111.0
-uvicorn==0.30.1
+uvicorn[standard]==0.30.1
+
+# ============================================================
+# Database — SQLite (built-in) + PostgreSQL driver
+# (psycopg2 ត្រូវការតែពេលប្រើ PostgreSQL ប៉ុណ្ណោះ)
+# ============================================================
 sqlalchemy>=2.0.31,<2.1
 psycopg2-binary>=2.9.10,<3
+
+# ============================================================
+# Validation / Auth / Upload / Integrations
+# ============================================================
 pydantic>=2.9.0,<3
 pydantic-settings>=2.3.0,<3
 python-jose[cryptography]==3.3.0

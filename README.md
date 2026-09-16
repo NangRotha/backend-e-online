@@ -6,33 +6,160 @@ Backend API សម្រាប់ E-commerce app (Storefront + Admin Panel) ដ�
 ## បច្ចេកវិទ្យា
 
 - **FastAPI** + **Uvicorn** (WebSocket real-time ផងដែរ)
-- **SQLAlchemy** + **PostgreSQL** (Render Postgres)
-- JWT Auth, OTP Email (SMTP), Telegram Login, DeepSeek AI Chat
+- **SQLAlchemy** + **SQLite** (Local) ឬ **PostgreSQL** (Render Postgres)
+- JWT Auth (Admin), KHQR / ABA Pay, DeepSeek AI Chat, UploadThing/Cloudinary
+- **SQLite + PostgreSQL ទាំងពីរ** — Migration រត់ស្វ័យប្រវត្តិ ដំណើរការលើទាំងពីរ
+
+---
+
+## Database — SQLite ឬ PostgreSQL?
+
+Backend ជ្រើសរើស Database ដោយស្វ័យប្រវត្តិ (មិនចាំបាច់កែកូដ)៖
+
+| លក្ខខណ្ឌ | Database ដែលប្រើ |
+| --- | --- |
+| `RENDER=true` និងមាន `DATABASE_URL_INTERNAL` | PostgreSQL (Internal URL) |
+| មាន `DATABASE_URL` | PostgreSQL (ឬ SQLite បើ URL ចាប់ផ្តើមដោយ `sqlite:`) |
+| គ្មានទាំងពីរ | **SQLite** → `backend/ecommerce.db` (បង្កើតស្វ័យប្រវត្តិ) |
+
+### ប្រើ SQLite (សាមញ្ញបំផុត — សម្រាប់ Local)
+
+```bash
+cd backend-e-online
+# ទុក DATABASE_URL ទទេ ក្នុង .env (ឬគ្មាន .env ក៏បាន)
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --reload
+```
+
+បង្កើតគណនី Admin (Storefront គ្មាន Sign Up ទៀតទេ)៖
+
+```bash
+.venv/bin/python create_admin.py admin@example.com --password 'admin12345' --name 'Store Admin'
+```
+
+- ឯកសារ Database: `backend-e-online/ecommerce.db` (gitignored)
+- ចង់ប្តូរទីតាំង → `SQLITE_PATH=/var/data/ecommerce.db`
+- ចង់ Reset Database → លុបឯកសារ `.db` ចោល រួច Restart (តារាងនឹងបង្កើតឡើងវិញ)
+
+> ⚠️ **លើ Render** ឯកសារ SQLite នឹងបាត់ពេល Redeploy/Restart ព្រោះ Disk ជា
+> Ephemeral។ បើចង់ប្រើ SQLite លើ Render ត្រូវបន្ថែម **Persistent Disk**
+> រួចកំណត់ `SQLITE_PATH=/var/data/ecommerce.db` និង `UPLOAD_DIR=/var/data/uploads`។
+> បើមិនចង់បាត់ទិន្នន័យ សូមប្រើ PostgreSQL (`DATABASE_URL`) ដូចពីមុន។
+
+### Migration ស្វ័យប្រវត្តិ
+
+ពេល Backend ចាប់ផ្តើម `init_db()` នឹង៖
+1. បង្កើតតារាងដែលខ្វះ (`create_all`)
+2. បន្ថែម Column/Index ថ្មីៗដែលមានក្នុង Model តែគ្មានក្នុង Database ចាស់
+   (ដំណើរការទាំង SQLite និង PostgreSQL — មិនប្រើ `IF NOT EXISTS` ព្រោះ SQLite មិនគាំទ្រ)
+
+ក្នុង Log នឹងឃើញ៖ `🗄️ Database (SQLite): sqlite:///...` និង
+`✅ Migration: បន្ថែម products.video_url` (បើមានការបន្ថែម)។
+
+---
+
+## Product Video (Admin Upload)
+
+Admin អាច Upload **វីដេអូ** ទៅឱ្យផលិតផលបាន (ក្រៅពីរូបភាព)៖
+
+- **Admin Panel → Products → Add/Edit Product → "Product video"**
+- ទ្រទ្រង់៖ `.mp4`, `.webm`, `.mov`, `.ogg`, `.m4v` (កំណត់ក្នុង
+  `ALLOWED_VIDEO_EXTENSIONS` → `app/storage.py`)
+- API: `POST /api/admin/upload?kind=video` (រូបភាពប្រើ `kind=image` ជា Default)
+- រក្សាទុកក្នុង Column `products.video_url`
+- **Storefront** បង្ហាញវីដេអូក្នុង Gallery នៃទំព័រផលិតផល (មាន Play button +
+  Video badge លើ Product Card)
+
+ឯកសារត្រូវបានផ្ទុកទៅ **UploadThing** (ឬ Cloudinary) បើបានកំណត់ បើអត់ →
+Local Disk `backend/uploads/`។ ពេលលុប/ប្តូរវីដេអូ ឯកសារចាស់ត្រូវបានលុបផង។
+
 
 ---
 
 ## Deploy លើ Render
+
+### ✅ Checklist មុន Deploy (សំខាន់)
+
+| ចំណុច | ហេតុអ្វី |
+| --- | --- |
+| **Build Command** = `pip install -r requirements.txt` | `uvicorn[standard]` ត្រូវបានដំឡើង → មាន `websockets` សម្រាប់ Real-time |
+| **Start Command** = `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'` | `--workers 1` ព្រោះ WebSocket manager ស្ថិតក្នុង Memory · `--proxy-headers` ព្រោះ Render ជា Reverse Proxy |
+| **Health Check Path** = `/health` | Render ដឹងថា Service ដំណើរការ |
+| **Python Version** = `3.12.10` (Manual Service) ឬ `pythonVersion: 3.12.8` (Blueprint) | Render default ថ្មីជាងនេះ → បណ្ណាល័យខ្លះគ្មាន wheel |
+| **Environment** = Production | បើក `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, `KHQRCC_*`, `FRONTEND_URL`, `BREVO_API_KEY`, `UPLOADTHING_TOKEN` |
+| **មិន Scale ច្រើន Instance** | WebSocket real-time ត្រូវការ Single Instance (បើចង់ Scale ត្រូវប្រើ Redis Pub/Sub) |
+
+### 🔍 ពិនិត្យក្រោយ Deploy (Service → Logs)
+
+ពេល Backend ចាប់ផ្តើម វានឹងបោះពុម្ព **Deployment Diagnostics** ដូចនេះ៖
+
+```
+🗄️  Database (PostgreSQL): postgresql://***@dpg-xxxx-a/DBNAME
+────────────────────────────────────────────────────────────────
+🚀 Environment : Render (production)
+   Database   : PostgreSQL → postgresql://***@dpg-xxxx-a/DBNAME
+   Storage    : ✅ UploadThing (CDN អចិន្ត្រៃយ៍)
+   Email      : ✅ brevo_api → you@email.com
+   KHQR/ABA   : ✅ enabled
+   CORS       : 8 origin(s)
+────────────────────────────────────────────────────────────────
+```
+
+បើមានបញ្ហា វានឹងបង្ហាញ `⚠️ WARNING:` ឧទាហរណ៍៖
+- SQLite លើ Render គ្មាន Persistent Disk → ទិន្នន័យនឹងបាត់
+- គ្មាន UploadThing/Cloudinary → រូបភាពនឹងបាត់
+- `SECRET_KEY` នៅតែជា Default → JWT អាចក្លែងបាន
+
+បន្ទាប់មកពិនិត្យ៖
+
+```bash
+curl https://<your-service>.onrender.com/health          # {"status":"ok"}
+curl https://<your-service>.onrender.com/api/payments/config   # enabled: true
+curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
+  -H 'Content-Type: application/json' -d '{}'            # 400 (មិនមែន 401) = Guest checkout ដំណើរការ
+```
 
 ### វិធីទី 1 — Blueprint (render.yaml) ស្វ័យប្រវត្តិ
 
 1. Push code ទៅ GitHub (ត្រូវមាន `render.yaml` និង `requirements.txt` នៅក្នុង folder នេះ)
 2. Render Dashboard → **New → Blueprint**
 3. ជ្រើស repo នេះ → Render បង្កើត Web Service ដោយស្វ័យប្រវត្តិ
-4. ចូល **Service → Environment** ហើយបំពេញអថេរទាំងនេះ (ដែលមាន `sync: false`)៖
+4. ចូល **Service → Environment** ហើយបំពេញអថេរទាំងនេះ (ដែលមាន `sync: false` ក្នុង `render.yaml`)៖
 
-| Env Var               | ឧទាហរណ៍                                    |
-| --------------------- | --------------------------------------------- |
-| `DATABASE_URL`        | `postgresql://USER:PASS@HOST...singapore-postgres.render.com/DB` |
-| `DATABASE_URL_INTERNAL` | `postgresql://USER:PASS@dpg-xxx-a/DB` (ពី DB → Connect → Internal) |
-| `SECRET_KEY`          | បង្កើតដោយ Render ដោយស្វ័យប្រវត្តិ        |
-| `CORS_ORIGINS`        | `https://your-shop.vercel.app,https://your-admin.vercel.app` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | Gmail/Provider SMTP |
-| `SMTP_FROM` / `SMTP_FROM_NAME` | `you@gmail.com` / `E-Commerce Store` |
-| `SMTP_USE_SSL`        | `False` (587) ឬ `True` (465)                  |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` | ពី @BotFather              |
-| `DEEPSEEK_API_KEY`    | ពី https://platform.deepseek.com              |
-| `UPLOADTHING_TOKEN`   | ពី https://uploadthing.com/dashboard → API Keys |
-| `UPLOAD_DIR`          | ទុកទទេ ឬ `/var/data/uploads` (បើមាន Disk)  |
+| Env Var | តម្រូវ? | ឧទាហរណ៍ / កន្លែងយក |
+| --- | --- | --- |
+| `DATABASE_URL` | ✅ ត្រូវ | `postgresql://USER:PASS@dpg-xxxx-a.singapore-postgres.render.com/DBNAME` (Postgres → Connect → **External**) |
+| `DATABASE_URL_INTERNAL` | ⭐ ណែនាំ | `postgresql://USER:PASS@dpg-xxxx-a/DBNAME` (Postgres → Connect → **Internal**) — ប្រើជាមុនពេល `RENDER=true` |
+| `SECRET_KEY` | ✅ ត្រូវ | Render បង្កើតស្វ័យប្រវត្តិ (Blueprint) ឬ string វែងសុវត្ថិភាព |
+| `CORS_ORIGINS` | ✅ ត្រូវ | `https://frontend-user-e-online.vercel.app,https://frontend-admin-e-online.vercel.app` |
+| `CORS_ORIGIN_REGEX` | ជម្រើស | Regex សម្រាប់ Vercel Preview URL ឧ. `^https://frontend-(user\|admin)-e-online.*\.vercel\.app$` |
+| `KHQRCC_PROFILE_ID` | ✅ សម្រាប់ KHQR | https://khqr.cc → ABA Pay Gateway → API Keys |
+| `KHQRCC_SECRET_KEY` | ✅ សម្រាប់ KHQR | ដូចខាងលើ |
+| `FRONTEND_URL` | ✅ សម្រាប់ KHQR | `https://frontend-user-e-online.vercel.app` (success_url ពេលបង់ប្រាក់ចប់) |
+| `BREVO_API_KEY` | ⭐ ណែនាំ (Receipt) | `xkeysib-...` ពី Brevo → SMTP & API → **API Keys** (ដំណើរការលើ Render free tier) |
+| `SMTP_HOST` | បើមិនប្រើ Brevo API | `smtp-relay.brevo.com` (ឬ `smtp.gmail.com`) |
+| `SMTP_PORT` | | `587` |
+| `SMTP_USER` | | `xxxx@smtp-brevo.com` |
+| `SMTP_PASSWORD` | | SMTP key (`xsmtpsib-...`) — **ទុក IP restriction ទទេ** |
+| `SMTP_FROM` | | អ៊ីមែលដែលបាន **Verify** ក្នុង Brevo |
+| `SMTP_FROM_NAME` | | `E-Online` |
+| `SMTP_USE_SSL` | | `False` (587) ឬ `True` (465) |
+| `UPLOADTHING_TOKEN` | ⭐ ណែនាំ (រូបភាព) | https://uploadthing.com/dashboard → API Keys |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | ជម្រើស | Cloudinary Dashboard → API Keys (ជំនួស UploadThing) |
+| `DEEPSEEK_API_KEY` | ជម្រើស (AI Chat) | https://platform.deepseek.com |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` | ជម្រើស | @BotFather (Storefront លែងប្រើ Telegram login ទៀតទេ) |
+| `UPLOAD_DIR` | ជម្រើស | ទុកទទេ (backend/uploads) ឬ `/var/data/uploads` បើមាន Persistent Disk |
+| `PYTHON_VERSION` | ✅ បើបង្កើត Manual | `3.12.10` (Blueprint កំណត់រួចក្នុង `render.yaml`) |
+| `CORS_ORIGIN_REGEX` | ជម្រើស | Regex សម្រាប់ Vercel Preview (ឧ. `^https://frontend-.*\.vercel\.app$`) |
+| `SQLITE_PATH` | ជម្រើស | ប្រើតែពេលជ្រើស SQLite លើ Render (ត្រូវការ Persistent Disk) |
+| `OTP_EXPIRE_MINUTES` | ជម្រើស | `10` |
+
+> **Render កំណត់ដោយស្វ័យប្រវត្តិ (មិនត្រូវបំពេញដោយដៃ)៖**
+> `RENDER=true`, `PORT`, និង `DATABASE_URL*` បើភ្ជាប់ Postgres តាម Blueprint។
+>
+> ⚠️ **ព័ត៌មាន Bakong Wallet** (Company Name · Bakong Wallet ID · Display Name ·
+> Currency · KHR rate) **មិនមែន Env Var ទេ** — វារក្សាទុកក្នុង Database
+> (`site_settings`) ហើយកំណត់តាម **Admin Panel → Settings → Bakong Wallet / KHQR payment**។
 
 > **RENDER** ត្រូវបាន Render កំណត់ដោយស្វ័យប្រវត្តិ (`RENDER=true`) —
 > code នឹងប្រើ `DATABASE_URL_INTERNAL` ដោយស្វ័យប្រវត្តិ។

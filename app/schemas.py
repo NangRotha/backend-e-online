@@ -14,7 +14,7 @@ class UserLogin(BaseModel):
 class UserOut(BaseModel):
     id: int
     name: str
-    email: EmailStr
+    email: str  # str (មិនមែន EmailStr) ព្រោះអាចមានអ៊ីមែល Placeholder (ឧ. Telegram)
     role: str
     email_verified: bool = False
     profile_image: str = ""
@@ -102,6 +102,7 @@ class ProductCreate(BaseModel):
     stock: int
     image_url: str = ""  # រូបមេ
     images: Optional[List[str]] = None  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
+    video_url: str = ""  # វីដេអូផលិតផល (mp4 / webm / mov — Admin Upload)
     category: str = ""
     is_on_sale: bool = False
     sale_percent: float = 0
@@ -115,6 +116,7 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = None
     image_url: Optional[str] = None
     images: Optional[List[str]] = None
+    video_url: Optional[str] = None
     category: Optional[str] = None
     is_on_sale: Optional[bool] = None
     sale_percent: Optional[float] = None

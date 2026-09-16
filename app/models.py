@@ -23,6 +23,7 @@ class Product(Base):
     stock = Column(Integer, default=0)
     image_url = Column(String, default="")  # រូបមេ (Main Image)
     images = Column(JSON, default=list)  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
+    video_url = Column(String, default="")  # វីដេអូផលិតផល (Admin Upload ពីកុំព្យូទ័រ)
     category = Column(String)
     is_on_sale = Column(Boolean, default=False)
     sale_percent = Column(Float, default=0)  # ឧទាហរណ៍ 10 = 10% discount
