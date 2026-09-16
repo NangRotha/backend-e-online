@@ -443,13 +443,9 @@ curl -X POST https://<your-service>.onrender.com/api/orders/checkout \
 | `KHQRCC_SECRET_KEY` | ✅ សម្រាប់ KHQR | ដូចខាងលើ |
 | `FRONTEND_URL` | ✅ សម្រាប់ KHQR | `https://frontend-user-e-online.vercel.app` (success_url ពេលបង់ប្រាក់ចប់) |
 | `BREVO_API_KEY` | ⭐ ណែនាំ (Receipt) | `xkeysib-...` ពី Brevo → SMTP & API → **API Keys** (ដំណើរការលើ Render free tier) |
-| `SMTP_HOST` | បើមិនប្រើ Brevo API | `smtp-relay.brevo.com` (ឬ `smtp.gmail.com`) |
-| `SMTP_PORT` | | `587` |
-| `SMTP_USER` | | `xxxx@smtp-brevo.com` |
-| `SMTP_PASSWORD` | | SMTP key (`xsmtpsib-...`) — **ទុក IP restriction ទទេ** |
-| `SMTP_FROM` | | អ៊ីមែលដែលបាន **Verify** ក្នុង Brevo |
-| `SMTP_FROM_NAME` | | `E-Online` |
-| `SMTP_USE_SSL` | | `False` (587) ឬ `True` (465) |
+| `SMTP_FROM` | ⭐ ត្រូវការ (ទាំង Brevo) | អ៊ីមែលដែលបាន **Verify** ក្នុង Brevo — កូដប្រើវាជា "អ្នកផ្ញើ" |
+| `SMTP_FROM_NAME` | ជម្រើស | `E-Online` |
+| 🚫 `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_USE_SSL` | **កុំដាក់លើ Free plan** | Render Free បិទ port 25/465/587 → ប្រើ `BREVO_API_KEY` ជំនួស (បើចង់ប្រើ SMTP ពិត ត្រូវការ Plan បង់) · ⚠️ កុំទុកតម្លៃទទេ — `SMTP_PORT`/`SMTP_USE_SSL` ទទេ = App Crash |
 | `UPLOADTHING_TOKEN` | ⭐ ណែនាំ (រូបភាព) | https://uploadthing.com/dashboard → API Keys |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | ជម្រើស | Cloudinary Dashboard → API Keys (ជំនួស UploadThing) |
 | `DEEPSEEK_API_KEY` | ជម្រើស (AI Chat) | https://platform.deepseek.com |

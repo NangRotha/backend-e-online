@@ -79,23 +79,27 @@ services:
       # Regex សម្រាប់ Vercel Preview URL ដែលផ្លាស់ប្តូររាល់ពេល Deploy
       - key: CORS_ORIGIN_REGEX
         value: '^https://frontend-(user|admin)-e-online.*\.vercel\.app$'
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
+      # ✉️ Email / OTP — ប្រើ **Brevo HTTP API** (HTTPS port 443)
+      # ⚠️ Render Free plan បិទ port 25/465/587 → SMTP ប្រើមិនបានទេ
+      # ⚠️ `SMTP_FROM` ត្រូវតែជាអ៊ីមែលដែលបាន **Verify** ក្នុង Brevo
+      #    (កូដប្រើវាជា "អ្នកផ្ញើ" ទាំង Brevo API និង SMTP)
       - key: SMTP_FROM
         sync: false
       - key: SMTP_FROM_NAME
         sync: false
-      - key: SMTP_USE_SSL
-        sync: false
-      # Brevo HTTP API — ផ្ញើ Email តាម HTTPS (ដំណើរការលើ Render free tier ព្រោះ port 587 បិទ)
       - key: BREVO_API_KEY
         sync: false
+      # បើប្រើ SMTP ពិត (Plan បង់ ឬ Server ខាងក្រៅ) — ដោះ Comment ១០ បន្ទាត់ខាងក្រោម:
+      # - key: SMTP_HOST
+      #   sync: false
+      # - key: SMTP_PORT
+      #   sync: false
+      # - key: SMTP_USER
+      #   sync: false
+      # - key: SMTP_PASSWORD
+      #   sync: false
+      # - key: SMTP_USE_SSL
+      #   sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_BOT_USERNAME

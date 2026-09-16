@@ -1,6 +1,5 @@
 # Environment (កុំ commit ឯកសារដែលមាន password)
-.env
-.env.local
+
 
 # Uploaded images
 uploads/
