@@ -89,8 +89,8 @@ class Settings(BaseSettings):
 
     # ABA Pay / KHQRcc — សម្រាប់ឲ្យអតិថិជនបង់ប្រាក់តាម QR (Scan & Pay)
     # យកពី https://anajakpay.com Dashboard -> ABA Pay Gateway -> API Keys
-    KHQRCC_PROFILE_ID: str = "64BHRPOl0tGc3IMdw3V1ysjwhFKVC8EH"
-    KHQRCC_SECRET_KEY: str = "cr6NRkWA2q3sq3rbR4VZshMRZQIj56L6"
+    KHQRCC_PROFILE_ID: str = "MOgrEmjgLkEmYzovmfTH0HQUPLgJ6DFq"
+    KHQRCC_SECRET_KEY: str = "EIiW0sBH4vWjzeovF5bRC6WwDHJYzvfK"
     # URL របស់ Storefront (សម្រាប់ success_url ពេលអតិថិជនបង់ប្រាក់ចប់)
     FRONTEND_URL: str = "https://frontend-user-e-online.vercel.app"
 

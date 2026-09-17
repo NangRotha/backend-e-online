@@ -22,9 +22,9 @@ def payment_branding(db: Session) -> dict:
     """អានព័ត៌មាន Bakong Wallet / Payment ពី Site Settings
     (Admin កំណត់ក្នុង Admin Panel -> Settings -> Bakong Wallet)
 
-    - payment_company_name → ចំណងជើងលើផ្ទាំង Checkout (Default: ShopeKh)
-    - payment_display_name → ឈ្មោះអ្នកទទួលប្រាក់ (បង្ហាញលើ Bakong Wallet — Default: Real Name)
-    - payment_bakong_id    → Bakong Wallet ID (លេខគណនីផ្លូវការ — Default: nang_rotha@bkrt)
+    - payment_company_name → ចំណងជើងលើផ្ទាំង Checkout (Default: Udom Shop)
+    - payment_display_name → ឈ្មោះអ្នកទទួលប្រាក់ (បង្ហាញលើ Bakong Wallet — Default: Udom)
+    - payment_bakong_id    → Bakong Wallet ID (លេខគណនីផ្លូវការ — Default: Udom)
     - payment_currency     → USD | KHR  និង payment_khr_rate (អត្រាប្តូរប្រាក់)
     """
     rows = {s.key: s.value for s in db.query(models.SiteSetting).all()}
@@ -36,9 +36,9 @@ def payment_branding(db: Session) -> dict:
     if khr_rate <= 0:
         khr_rate = 4100.0
     return {
-        "company_name": rows.get("payment_company_name") or site_name or "ShopeKh",
-        "display_name": rows.get("payment_display_name") or site_name or "Real Name",
-        "bakong_id": rows.get("payment_bakong_id") or "nang_rotha@bkrt",
+        "company_name": rows.get("payment_company_name") or site_name or "Udom Shop",
+        "display_name": rows.get("payment_display_name") or site_name or "Udom",
+        "bakong_id": rows.get("payment_bakong_id") or "Udom",
         "currency": (rows.get("payment_currency") or "USD").upper(),
         "khr_rate": khr_rate,
     }
