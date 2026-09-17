@@ -50,6 +50,9 @@ def _create_engine():
     if directory:
         try:
             os.makedirs(directory, exist_ok=True)
+            # បើជាថត /var/data លើ Persistent Disk -> បង្កើត uploads directory ផងដែរ
+            if directory == "/var/data" or directory.startswith("/var/data"):
+                os.makedirs("/var/data/uploads", exist_ok=True)
         except Exception as exc:  # noqa: BLE001
             # ⚠️ ឧ. Render Free Plan: /var/data មិនមាន (គ្មាន Persistent Disk)
             fallback = f"sqlite:///{DEFAULT_SQLITE_FILE}"
@@ -66,6 +69,16 @@ def _create_engine():
                 pool_pre_ping=True,
             )
             return _configure_sqlite_pragmas(eng)
+
+    # បើនៅលើ Disk (/var/data) ហើយ DB មិនទាន់មាន (Disk ទើបតែបង្កើតថ្មី) តែមាន default DB
+    # -> ចម្លងពី template មក ដើម្បីកុំឱ្យបាត់ Categories, Products, Site Settings ដំបូង
+    if not os.path.exists(target) and DEFAULT_SQLITE_FILE.exists() and str(DEFAULT_SQLITE_FILE) != target:
+        import shutil
+        try:
+            shutil.copy2(DEFAULT_SQLITE_FILE, target)
+            print(f"📦 Persistent Disk: បានចម្លងទិន្នន័យដំបូងពី {DEFAULT_SQLITE_FILE.name} ទៅកាន់ {target}", flush=True)
+        except Exception as e:
+            print(f"ℹ️ Persistent Disk: បង្កើតទិន្នន័យថ្មីនៅ {target} ({e})", flush=True)
 
     EFFECTIVE_DATABASE_URL = f"sqlite:///{target}"
     # SQLite ត្រូវការ `check_same_thread=False` ព្រោះ FastAPI ប្រើច្រើន Thread

@@ -45,14 +45,13 @@ services:
     healthCheckPath: /health
 
     # ============================================================
-    # OPTION B — Persistent Disk (ត្រូវការ Plan `starter` ឡើងទៅ · Free មិនគាំទ្រ)
-    # 🐳 Docker: ដោះ Comment ៤ បន្ទាត់ខាងក្រោមតែប៉ុណ្ណោះ — គ្មានត្រូវកែ Env Var ទេ
-    # (Dockerfile ENV កំណត់ `SQLITE_PATH` និង `UPLOAD_DIR` = /var/data រួចហើយ)
+    # Persistent Disk (mount នៅ `/var/data`)
+    # ទិន្នន័យ (ecommerce.db) និងរូបភាព Upload មិនបាត់ពេល Redeploy ✓
     # ============================================================
-    # disk:
-    #   name: data
-    #   mountPath: /var/data
-    #   sizeGB: 1
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 10
     envVars:
       # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ
       - key: SECRET_KEY
