@@ -31,9 +31,9 @@ router = APIRouter(prefix="/api/payments", tags=["ABA Pay (KHQRcc)"])
 
 logger = logging.getLogger("uvicorn.error")
 
-KHQRCC_BASE = "https://khqr.cc"
+KHQRCC_BASE = "https://anajakpay.com"
 # Managed Checkout (requestv2) — Auto-redirect ទៅ ABA Pay Checkout (ប្រើជាមួយ Plugin)
-KHQRCC_REDIRECT_BASE = "https://khqr.cc/api/payment/requestv2"
+KHQRCC_REDIRECT_BASE = "https://anajakpay.com/api/payment/requestv2"
 # Frontend Checkout URL (Managed Checkout v2) — ទំព័រ ABA Pay ផ្ទាល់ (មាន KHQR + Deeplink)
 KHQRCC_CHECKOUT_BASE = "https://checkout.anajakpay.com/payment/khqrcc"
 
@@ -317,6 +317,7 @@ async def create_payment(
 @router.post("/status", response_model=schemas.PaymentStatusResponse)
 async def check_status(
     payload: schemas.PaymentStatusRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     if not payment_configured(db):
@@ -341,9 +342,19 @@ async def check_status(
         )
 
     d = result.get("data") or {}
+    status_val = d.get("status", "pending")
+
+    # Auto-confirm: ពេលឃើញ status == "success" -> សម្គាល់ Order -> paid ភ្លាមៗ
+    if status_val == "success":
+        order = db.query(models.Order).filter(
+            models.Order.payment_ref == payload.transaction_id
+        ).first()
+        if order and order.status != "paid":
+            _mark_paid_and_notify(db, order, background_tasks)
+
     return {
         "transaction_id": payload.transaction_id,
-        "status": d.get("status", "pending"),
+        "status": status_val,
         "amount": d.get("amount"),
     }
 

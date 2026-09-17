@@ -106,13 +106,15 @@ def _bootstrap_site_settings():
             "payment_display_name": "Real Name",
             "payment_currency": "USD",
             "payment_khr_rate": "4100",
-            "khqrcc_profile_id": "MOgrEmjgLkEmYzovmfTH0HQUPLgJ6DFq",
-            "khqrcc_secret_key": "EIiW0sBH4vWjzeovF5bRC6WwDHJYzvfK",
+            "khqrcc_profile_id": "64BHRPOl0tGc3IMdw3V1ysjwhFKVC8EH",
+            "khqrcc_secret_key": "cr6NRkWA2q3sq3rbR4VZshMRZQIj56L6",
         }
         legacy_defaults = {
             "payment_company_name": {"", "My Shop", "KHMER UDOM ET CO.,LTD"},
             "payment_bakong_id": {"", "udom@acleda", "yourname@acleda"},
             "payment_display_name": {"", "Udom ET"},
+            "khqrcc_profile_id": {"", "MOgrEmjgLkEmYzovmfTH0HQUPLgJ6DFq"},
+            "khqrcc_secret_key": {"", "EIiW0sBH4vWjzeovF5bRC6WwDHJYzvfK"},
         }
         existing = {s.key: s for s in db.query(models.SiteSetting).all()}
         updated = 0
