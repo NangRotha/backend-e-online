@@ -108,7 +108,21 @@ class Settings(BaseSettings):
     # ============================================================
     ADMIN_EMAIL: str = ""
     ADMIN_PASSWORD: str = ""
+    Email: str = ""
+    Password: str = ""
+    EMAIL: str = ""
+    PASSWORD: str = ""
     ADMIN_NAME: str = "Admin"  # ឈ្មោះបង្ហាញ (Display Name) របស់ Admin
+
+    @property
+    def effective_admin_email(self) -> str:
+        """អ៊ីមែល Admin — គាំទ្រទាំង ADMIN_EMAIL និង Email"""
+        return (self.ADMIN_EMAIL or self.Email or self.EMAIL or "").strip()
+
+    @property
+    def effective_admin_password(self) -> str:
+        """ពាក្យសម្ងាត់ Admin — គាំទ្រទាំង ADMIN_PASSWORD និង Password"""
+        return self.ADMIN_PASSWORD or self.Password or self.PASSWORD or ""
 
     @property
     def has_legacy_postgres_url(self) -> bool:

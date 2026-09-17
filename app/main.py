@@ -23,8 +23,8 @@ def _bootstrap_admin() -> None:
     """
     from .auth import hash_password, verify_password
 
-    email = (app_settings.ADMIN_EMAIL or "").strip().lower()
-    password = app_settings.ADMIN_PASSWORD or ""
+    email = app_settings.effective_admin_email.lower()
+    password = app_settings.effective_admin_password
     if not email or not password:
         return
 
@@ -315,10 +315,10 @@ def _deploy_diagnostics():
             "DATABASE_URL, DATABASE_URL_INTERNAL, និង DB_ENGINE ចេញ។"
         )
 
-    if on_render and (not app_settings.ADMIN_EMAIL or not app_settings.ADMIN_PASSWORD):
+    if on_render and (not app_settings.effective_admin_email or not app_settings.effective_admin_password):
         warnings.append(
             "ខ្វះ ADMIN_EMAIL ឬ ADMIN_PASSWORD ក្នុង Render Environment Variables — គ្មាន Admin ត្រូវបានបង្កើតទេ! "
-            "សូមបន្ថែម ADMIN_EMAIL=... និង ADMIN_PASSWORD=... ក្នុង Render ដើម្បីចូល Admin Panel បាន។"
+            "សូមបន្ថែម ADMIN_EMAIL=... និង ADMIN_PASSWORD=... (ឬ Email=... និង Password=...) ក្នុង Render ដើម្បីចូល Admin Panel បាន។"
         )
 
     for w in warnings:
