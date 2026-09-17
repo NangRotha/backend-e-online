@@ -35,16 +35,38 @@ KHQRCC_BASE = "https://khqr.cc"
 # Managed Checkout (requestv2) — Auto-redirect ទៅ ABA Pay Checkout (ប្រើជាមួយ Plugin)
 KHQRCC_REDIRECT_BASE = "https://khqr.cc/api/payment/requestv2"
 # Frontend Checkout URL (Managed Checkout v2) — ទំព័រ ABA Pay ផ្ទាល់ (មាន KHQR + Deeplink)
-KHQRCC_CHECKOUT_BASE = "https://checkout.khqr.cc/payment/khqrcc"
+KHQRCC_CHECKOUT_BASE = "https://checkout.anajakpay.com/payment/khqrcc"
 
 
-def payment_configured() -> bool:
-    """ពិនិត្យថាបានកំណត់ KHQRcc (Profile ID + Secret Key) ឬអត់"""
+def get_khqrcc_credentials(db: Optional[Session] = None) -> tuple[str, str]:
+    """ទាញយក Profile ID និង Secret Key ពី Database (SiteSetting) ឬ Environment (config.py)"""
     profile_id = (settings.KHQRCC_PROFILE_ID or "").strip()
     secret_key = (settings.KHQRCC_SECRET_KEY or "").strip()
+    if db is not None:
+        try:
+            rows = {
+                s.key: s.value
+                for s in db.query(models.SiteSetting).filter(
+                    models.SiteSetting.key.in_(["khqrcc_profile_id", "khqrcc_secret_key"])
+                ).all()
+            }
+            db_profile = (rows.get("khqrcc_profile_id") or "").strip()
+            db_secret = (rows.get("khqrcc_secret_key") or "").strip()
+            if db_profile:
+                profile_id = db_profile
+            if db_secret:
+                secret_key = db_secret
+        except Exception as e:
+            logger.warning(f"Could not load khqrcc credentials from DB: {e}")
+    return profile_id, secret_key
+
+
+def payment_configured(db: Optional[Session] = None) -> bool:
+    """ពិនិត្យថាបានកំណត់ KHQRcc (Profile ID + Secret Key) ឬអត់"""
+    profile_id, secret_key = get_khqrcc_credentials(db)
     if not (profile_id and secret_key):
         return False
-    if secret_key in ("REGENERATE-THIS-KEY", "PUT_REAL_SECRET_KEY_OR_SKIP_THIS_LINE"):
+    if secret_key in ("REGENERATE-THIS-KEY", "PUT_REAL_SECRET_KEY_OR_SKIP_THIS_LINE", "YOUR_SECRET_KEY"):
         return False
     return True
 
@@ -103,6 +125,7 @@ def _encode_items(items: Optional[List[Dict]]) -> str:
 
 
 def _payment_params(
+    secret_key: str,
     transaction_id: str,
     amount: str,
     success_url: str,
@@ -118,7 +141,7 @@ def _payment_params(
         "success_url": success_url,
         "remark": remark,
         "hash": _sha1(
-            settings.KHQRCC_SECRET_KEY, transaction_id, amount, success_url, remark
+            secret_key, transaction_id, amount, success_url, remark
         ),
     }
     if cancel_url:
@@ -131,6 +154,8 @@ def _payment_params(
 
 
 def build_redirect_url(
+    profile_id: str,
+    secret_key: str,
     transaction_id: str,
     amount: str,
     success_url: str,
@@ -145,13 +170,15 @@ def build_redirect_url(
     """
     query = urlencode(
         _payment_params(
-            transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
+            secret_key, transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
         )
     )
-    return f"{KHQRCC_REDIRECT_BASE}/{settings.KHQRCC_PROFILE_ID}?{query}"
+    return f"{KHQRCC_REDIRECT_BASE}/{profile_id}?{query}"
 
 
 def build_checkout_url(
+    profile_id: str,
+    secret_key: str,
     transaction_id: str,
     amount: str,
     success_url: str,
@@ -160,16 +187,16 @@ def build_checkout_url(
     items_b64: str = "",
     custom_fields_b64: str = "",
 ) -> str:
-    """Frontend Checkout URL ផ្ទាល់ (`checkout.khqr.cc/payment/khqrcc/{profile}`)
+    """Frontend Checkout URL ផ្ទាល់ (`checkout.anajakpay.com/payment/khqrcc/{profile}`)
 
     លឿនជាងមួយជំហាត់ (មិនបាច់ Redirect) — ប្រើសម្រាប់ Link / “Open checkout”
     """
     query = urlencode(
         _payment_params(
-            transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
+            secret_key, transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
         )
     )
-    return f"{KHQRCC_CHECKOUT_BASE}/{settings.KHQRCC_PROFILE_ID}?{query}"
+    return f"{KHQRCC_CHECKOUT_BASE}/{profile_id}?{query}"
 
 
 def _encode_custom_fields(data: Optional[Dict]) -> str:
@@ -197,16 +224,16 @@ def _sha256(*parts) -> str:
     return hashlib.sha256("".join(str(p) for p in parts).encode()).hexdigest()
 
 
-def _qr_api_url() -> str:
+def _qr_api_url(profile_id: str) -> str:
     return (
-        f"{KHQRCC_BASE}/api/{settings.KHQRCC_PROFILE_ID}"
+        f"{KHQRCC_BASE}/api/{profile_id}"
         "/payment-gateway/v1/payments/qr-api-khqrcc"
     )
 
 
-def _verify_api_url() -> str:
+def _verify_api_url(profile_id: str) -> str:
     return (
-        f"{KHQRCC_BASE}/api/{settings.KHQRCC_PROFILE_ID}"
+        f"{KHQRCC_BASE}/api/{profile_id}"
         "/payment-gateway/v1/payments/check-transv2-khqrcc"
     )
 
@@ -224,7 +251,7 @@ def payment_config(db: Session = Depends(get_db)):
 
     branding = payment_branding(db)
     return {
-        "enabled": payment_configured(),
+        "enabled": payment_configured(db),
         "provider": "aba_khqrcc",
         **branding,
     }
@@ -234,10 +261,14 @@ def payment_config(db: Session = Depends(get_db)):
 # Public: បង្កើត QR Code សម្រាប់បង់ប្រាក់ (Scan & Pay)
 # ============================================================
 @router.post("/create", response_model=schemas.PaymentCreateResponse)
-async def create_payment(payload: schemas.PaymentCreateRequest):
-    if not payment_configured():
+async def create_payment(
+    payload: schemas.PaymentCreateRequest,
+    db: Session = Depends(get_db),
+):
+    if not payment_configured(db):
         raise HTTPException(status_code=400, detail="ABA Pay (KHQRcc) is not configured")
 
+    profile_id, secret_key = get_khqrcc_credentials(db)
     amount = _fmt_amount(payload.amount)
     data = {
         "transaction_id": payload.transaction_id,
@@ -245,7 +276,7 @@ async def create_payment(payload: schemas.PaymentCreateRequest):
         "success_url": payload.success_url,
         "remark": payload.remark,
         "hash": _sha1(
-            settings.KHQRCC_SECRET_KEY,
+            secret_key,
             payload.transaction_id,
             amount,
             payload.success_url,
@@ -258,7 +289,7 @@ async def create_payment(payload: schemas.PaymentCreateRequest):
         if value:
             data[key] = value
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(_qr_api_url(), data=data)
+        resp = await client.post(_qr_api_url(profile_id), data=data)
         try:
             result = resp.json()
         except Exception:
@@ -284,16 +315,20 @@ async def create_payment(payload: schemas.PaymentCreateRequest):
 # Public: ពិនិត្យស្ថានភាពការបង់ប្រាក់ (Polling — auto-payment detection)
 # ============================================================
 @router.post("/status", response_model=schemas.PaymentStatusResponse)
-async def check_status(payload: schemas.PaymentStatusRequest):
-    if not payment_configured():
+async def check_status(
+    payload: schemas.PaymentStatusRequest,
+    db: Session = Depends(get_db),
+):
+    if not payment_configured(db):
         raise HTTPException(status_code=400, detail="ABA Pay (KHQRcc) is not configured")
 
+    profile_id, secret_key = get_khqrcc_credentials(db)
     data = {
         "transaction_id": payload.transaction_id,
-        "hash": _sha1(settings.KHQRCC_SECRET_KEY, payload.transaction_id),
+        "hash": _sha1(secret_key, payload.transaction_id),
     }
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(_verify_api_url(), data=data)
+        resp = await client.post(_verify_api_url(profile_id), data=data)
         try:
             result = resp.json()
         except Exception:
@@ -322,16 +357,17 @@ async def confirm_payment(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    if not payment_configured():
+    if not payment_configured(db):
         raise HTTPException(status_code=400, detail="ABA Pay (KHQRcc) is not configured")
 
+    profile_id, secret_key = get_khqrcc_credentials(db)
     # ពិនិត្យឡើងវិញជាមួយ Gateway (កុំជឿ Frontend តែម្នាក់ឯង)
     data = {
         "transaction_id": payload.transaction_id,
-        "hash": _sha1(settings.KHQRCC_SECRET_KEY, payload.transaction_id),
+        "hash": _sha1(secret_key, payload.transaction_id),
     }
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(_verify_api_url(), data=data)
+        resp = await client.post(_verify_api_url(profile_id), data=data)
         try:
             result = resp.json()
         except Exception:
@@ -369,6 +405,7 @@ async def payment_callback(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    profile_id, secret_key = get_khqrcc_credentials(db)
     transaction_id = (
         payload.get("transaction_id")
         or payload.get("order_id")
@@ -381,7 +418,7 @@ async def payment_callback(
 
     if status == "success":
         expected = _sha256(
-            settings.KHQRCC_SECRET_KEY, req_time, transaction_id, amount, "SUCCESS"
+            secret_key, req_time, transaction_id, amount, "SUCCESS"
         )
         if not hmac.compare_digest(expected, received_hash):
             raise HTTPException(status_code=400, detail="Invalid hash")
@@ -486,6 +523,7 @@ async def create_order_payment(
     amount: float,
     remark: str,
     items: Optional[List[Dict]] = None,
+    db: Optional[Session] = None,
 ) -> Optional[Dict]:
     """បង្កើតការបង់ប្រាក់សម្រាប់ Order មួយ៖
 
@@ -495,9 +533,10 @@ async def create_order_payment(
 
     ដូច្នេះទោះ Gateway មានបញ្ហា/Timeout អតិថិជននៅតែអាចបង់ប្រាក់តាម Link ✓
     """
-    if not payment_configured():
+    if not payment_configured(db):
         return None
 
+    profile_id, secret_key = get_khqrcc_credentials(db)
     transaction_id = f"ECOMM{order_id}-{uuid.uuid4().hex[:8]}"
     amount_str = _fmt_amount(amount)
     success_url = f"{settings.FRONTEND_URL}/order-success?order_id={order_id}"
@@ -510,30 +549,45 @@ async def create_order_payment(
     )
     qr_string, qr_image = "", ""
     try:
-        payload = schemas.PaymentCreateRequest(
-            transaction_id=transaction_id,
-            amount=amount,
-            success_url=success_url,
-            remark=remark,
-            cancel_url=cancel_url,
-            items=items_b64,
-            custom_fields=custom_fields_b64,
-        )
-        data = await create_payment(payload)
-        qr_string = data.get("qr") or ""
-        qr_image = data.get("qr_url") or ""
-    except HTTPException as exc:
-        logger.warning(f"QR API failed for order #{order_id}: {exc.detail}")
+        data = {
+            "transaction_id": transaction_id,
+            "amount": amount_str,
+            "success_url": success_url,
+            "remark": remark,
+            "hash": _sha1(
+                secret_key,
+                transaction_id,
+                amount_str,
+                success_url,
+                remark,
+            ),
+        }
+        if cancel_url:
+            data["cancel_url"] = cancel_url
+        if items_b64:
+            data["items"] = items_b64
+        if custom_fields_b64:
+            data["custom_fields"] = custom_fields_b64
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(_qr_api_url(profile_id), data=data)
+            result = resp.json()
+            if result.get("responseCode") == 0:
+                qr_string, qr_image = _extract_qr_fields(result)
+            else:
+                logger.warning(
+                    f"QR API returned non-zero code for order #{order_id}: {result}"
+                )
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            f"QR API unreachable for order #{order_id}: {type(exc).__name__}: {exc}"
-        )
+        logger.warning(f"QR API failed for order #{order_id}: {exc}")
 
     # 2) បើគ្មានរូបភាព QR -> បង្កើតខ្លួនឯងពី EMV string
     qr_image = _ensure_qr_image(qr_string, qr_image, transaction_id)
 
     # 3) Checkout URLs (គណនាក្នុងម៉ាស៊ីន — ប្រើបានភ្លាម ទោះ Gateway ជាប់)
     url_args = (
+        profile_id,
+        secret_key,
         transaction_id,
         amount_str,
         success_url,
@@ -543,7 +597,7 @@ async def create_order_payment(
         custom_fields_b64,
     )
     redirect_url = build_redirect_url(*url_args)   # requestv2 (Plugin + Redirect)
-    checkout_url = build_checkout_url(*url_args)   # checkout.khqr.cc (ផ្ទាល់)
+    checkout_url = build_checkout_url(*url_args)   # checkout.anajakpay.com (ផ្ទាល់)
 
     return {
         "transaction_id": transaction_id,

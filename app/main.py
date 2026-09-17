@@ -96,11 +96,52 @@ def _bootstrap_admin() -> None:
         db.close()
 
 
+def _bootstrap_site_settings():
+    """កំណត់ Site Settings ដំបូងសម្រាប់ ABA Pay / Bakong Wallet ប្រសិនបើមិនទាន់មាន"""
+    db = SessionLocal()
+    try:
+        defaults = {
+            "payment_company_name": "ShopeKh",
+            "payment_bakong_id": "nang_rotha@bkrt",
+            "payment_display_name": "Real Name",
+            "payment_currency": "USD",
+            "payment_khr_rate": "4100",
+            "khqrcc_profile_id": "MOgrEmjgLkEmYzovmfTH0HQUPLgJ6DFq",
+            "khqrcc_secret_key": "EIiW0sBH4vWjzeovF5bRC6WwDHJYzvfK",
+        }
+        legacy_defaults = {
+            "payment_company_name": {"", "My Shop", "KHMER UDOM ET CO.,LTD"},
+            "payment_bakong_id": {"", "udom@acleda", "yourname@acleda"},
+            "payment_display_name": {"", "Udom ET"},
+        }
+        existing = {s.key: s for s in db.query(models.SiteSetting).all()}
+        updated = 0
+        for key, val in defaults.items():
+            if key not in existing:
+                db.add(models.SiteSetting(key=key, value=val))
+                updated += 1
+            else:
+                curr_val = (existing[key].value or "").strip()
+                if not curr_val or curr_val in legacy_defaults.get(key, set()):
+                    existing[key].value = val
+                    updated += 1
+        if updated:
+            db.commit()
+            print(f"✅ Site Settings bootstrap: បានកំណត់ {updated} settings (ABA Pay: ShopeKh / nang_rotha@bkrt)", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  Site Settings bootstrap បរាជ័យ: {type(exc).__name__}: {exc}", flush=True)
+    finally:
+        db.close()
+
+
 # បង្កើតតារាងទាំងអស់ក្នុង Database ប្រសិនបើមិនទាន់មាន (រួមទាំង Migration)
 init_db()
 
 # 👤 Bootstrap Admin ដំបូង (ដំណើរការតែពេលកំណត់ ADMIN_EMAIL + ADMIN_PASSWORD)
 _bootstrap_admin()
+
+# 💳 Bootstrap Site Settings សម្រាប់ ABA Pay / Bakong Wallet
+_bootstrap_site_settings()
 
 # ព្រមានបើ Email (OTP) មិនទាន់កំណត់ — ពេលនោះ OTP នឹងបង្ហាញក្នុង Dev Mode តែប៉ុណ្ណោះ
 _email_cfg = email_status()

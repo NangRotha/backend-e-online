@@ -22,9 +22,9 @@ def payment_branding(db: Session) -> dict:
     """អានព័ត៌មាន Bakong Wallet / Payment ពី Site Settings
     (Admin កំណត់ក្នុង Admin Panel -> Settings -> Bakong Wallet)
 
-    - payment_company_name → ចំណងជើងលើផ្ទាំង Checkout
-    - payment_display_name → ឈ្មោះអ្នកទទួលប្រាក់ (បង្ហាញលើ Bakong Wallet)
-    - payment_bakong_id    → Bakong Wallet ID (លេខគណនីផ្លូវការ)
+    - payment_company_name → ចំណងជើងលើផ្ទាំង Checkout (Default: ShopeKh)
+    - payment_display_name → ឈ្មោះអ្នកទទួលប្រាក់ (បង្ហាញលើ Bakong Wallet — Default: Real Name)
+    - payment_bakong_id    → Bakong Wallet ID (លេខគណនីផ្លូវការ — Default: nang_rotha@bkrt)
     - payment_currency     → USD | KHR  និង payment_khr_rate (អត្រាប្តូរប្រាក់)
     """
     rows = {s.key: s.value for s in db.query(models.SiteSetting).all()}
@@ -36,9 +36,9 @@ def payment_branding(db: Session) -> dict:
     if khr_rate <= 0:
         khr_rate = 4100.0
     return {
-        "company_name": rows.get("payment_company_name") or site_name,
-        "display_name": rows.get("payment_display_name") or site_name,
-        "bakong_id": rows.get("payment_bakong_id") or "",
+        "company_name": rows.get("payment_company_name") or site_name or "ShopeKh",
+        "display_name": rows.get("payment_display_name") or site_name or "Real Name",
+        "bakong_id": rows.get("payment_bakong_id") or "nang_rotha@bkrt",
         "currency": (rows.get("payment_currency") or "USD").upper(),
         "khr_rate": khr_rate,
     }
@@ -93,12 +93,16 @@ async def checkout(
     # បង្កើត Order ក្នុង Database
     # (Guest: user_id = None — Order ភ្ជាប់តាមលេខទូរសព្ទ/អ៊ីមែលជំនួសវិញ)
     customer_email = (order.customer_email or "").strip()
-    if not customer_email and current_user:
-        customer_email = current_user.email or ""
-    profile_name = current_user.name if current_user else ""
+    profile_name = ""
+    user_id = None
+    if isinstance(current_user, models.User):
+        user_id = current_user.id
+        profile_name = current_user.name or ""
+        if not customer_email:
+            customer_email = current_user.email or ""
 
     new_order = models.Order(
-        user_id=current_user.id if current_user else None,
+        user_id=user_id,
         total_amount=total,
         status="pending",
         promo_code=order.promo_code if discount_applied else None,
@@ -132,8 +136,9 @@ async def checkout(
         remark=f"Order #{new_order.id}",
         items=[
             {"name": product.name, "quantity": qty, "price": unit_price}
-            for product, qty, unit_price in purchased
+            for product, qty, unit_price, *rest in purchased
         ],
+        db=db,
     )
     if payment:
         new_order.payment_ref = payment["transaction_id"]
