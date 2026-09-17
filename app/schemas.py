@@ -103,6 +103,7 @@ class ProductCreate(BaseModel):
     image_url: str = ""  # រូបមេ
     images: Optional[List[str]] = None  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
     video_url: str = ""  # វីដេអូផលិតផល (mp4 / webm / mov — Admin Upload)
+    variants: Optional[List[str]] = None  # បញ្ជីប្រភេទ/ជម្រើសផលិតផល (ឧ. ["Pink", "Black", "White"])
     category: str = ""
     is_on_sale: bool = False
     sale_percent: float = 0
@@ -117,6 +118,7 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     images: Optional[List[str]] = None
     video_url: Optional[str] = None
+    variants: Optional[List[str]] = None
     category: Optional[str] = None
     is_on_sale: Optional[bool] = None
     sale_percent: Optional[float] = None
@@ -129,6 +131,7 @@ class ProductOut(ProductCreate):
 class CheckoutItem(BaseModel):
     product_id: int
     quantity: int
+    variant: Optional[str] = None
 
 class CheckoutRequest(BaseModel):
     items: Optional[List[CheckoutItem]] = None

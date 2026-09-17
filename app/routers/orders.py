@@ -73,7 +73,7 @@ async def checkout(
         if product.stock < item.quantity:
             raise HTTPException(status_code=400, detail=f"Product '{product.name}' out of stock")
         unit_price = _effective_price(product)
-        purchased.append((product, item.quantity, unit_price))
+        purchased.append((product, item.quantity, unit_price, getattr(item, "variant", None)))
         total += unit_price * item.quantity
 
     discount_applied = False
@@ -114,12 +114,13 @@ async def checkout(
     db.refresh(new_order)
 
     # បង្កើត Order Items និងបន្ថយ Stock
-    for product, qty, unit_price in purchased:
+    for product, qty, unit_price, variant in purchased:
         db.add(models.OrderItem(
             order_id=new_order.id,
             product_id=product.id,
             quantity=qty,
-            price=unit_price
+            price=unit_price,
+            variant=variant or None
         ))
         product.stock -= qty
     db.commit()

@@ -161,6 +161,17 @@ def list_orders(db: Session = Depends(_admin)):
             .filter(models.OrderItem.order_id == o.id)
             .all()
         )
+        serialized_items = []
+        for i in items:
+            p = db.query(models.Product).filter(models.Product.id == i.product_id).first()
+            serialized_items.append({
+                "product_id": i.product_id,
+                "product_name": p.name if p else f"Product #{i.product_id}",
+                "product_image": p.image_url if p else "",
+                "variant": getattr(i, "variant", "") or "",
+                "quantity": i.quantity,
+                "price": i.price,
+            })
         result.append({
             "id": o.id,
             "user_email": user.email if user else None,
@@ -174,14 +185,7 @@ def list_orders(db: Session = Depends(_admin)):
             "shipping_address": o.shipping_address,
             "note": o.note,
             "created_at": o.created_at,
-            "items": [
-                {
-                    "product_id": i.product_id,
-                    "quantity": i.quantity,
-                    "price": i.price,
-                }
-                for i in items
-            ],
+            "items": serialized_items,
         })
     return result
 
