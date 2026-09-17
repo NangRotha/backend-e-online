@@ -39,7 +39,22 @@ except ImportError:
 # ថតរក្សាទុករូបភាពដែល Upload ពីកុំព្យូទ័រ (backend/uploads/) — ប្រើតែពេលអត់ Cloudinary
 # អាចប្តូរទីតាំងតាម Environment Variable `UPLOAD_DIR`
 DEFAULT_UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
-UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", str(DEFAULT_UPLOAD_DIR)))
+
+
+def _resolve_upload_dir() -> Path:
+    raw = os.environ.get("UPLOAD_DIR", "").strip()
+    if raw and raw not in (".", "/"):
+        return Path(raw)
+
+    render_flag = os.environ.get("RENDER", "").strip().lower() in ("true", "1", "yes")
+    var_data = Path("/var/data")
+    if (render_flag or var_data.exists()) and var_data.is_dir():
+        return Path("/var/data/uploads")
+
+    return DEFAULT_UPLOAD_DIR
+
+
+UPLOAD_DIR = _resolve_upload_dir()
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"}
 
@@ -66,7 +81,7 @@ _UT_CLIENT = httpx.Client(timeout=60)
 def _uploadthing_creds() -> dict | None:
     """ញែក Token យក apiKey + appId + region (ដើម្បីបង្កើត ingest URL)"""
     token = (settings.UPLOADTHING_TOKEN or "").strip()
-    if not token:
+    if not token or token in ("your-uploadthing-token", "PUT_REAL_TOKEN_OR_SKIP_THIS_LINE"):
         return None
     try:
         data = json.loads(base64.b64decode(token))
@@ -358,11 +373,14 @@ def ensure_upload_dir() -> Path:
     ប្រើ UPLOAD_DIR បើអាច បើអត់ -> ត្រឡប់ទៅ DEFAULT_UPLOAD_DIR (backend/uploads/)។
     (កុំឱ្យ App crash ពេល UPLOAD_DIR កំណត់ខុស / គ្មាន Persistent Disk)"""
     for d in (UPLOAD_DIR, DEFAULT_UPLOAD_DIR):
+        if str(d) in ("", "."):
+            continue
         try:
             d.mkdir(parents=True, exist_ok=True)
             return d
         except Exception:
             continue
-    return UPLOAD_DIR
+    DEFAULT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    return DEFAULT_UPLOAD_DIR
 
 

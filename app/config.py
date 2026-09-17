@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     #    `backend/ecommerce.db` វិញ ដើម្បីកុំឱ្យ App Crash
     # ============================================================
     SQLITE_PATH: str = ""
+    DATABASE_URL: str = ""
+    DATABASE_URL_INTERNAL: str = ""
+    DB_ENGINE: str = ""
 
     # Render កំណត់ RENDER=true ដោយស្វ័យប្រវត្តិ នៅពេលដំណើរការលើ Render
     RENDER: str = ""
@@ -108,10 +111,37 @@ class Settings(BaseSettings):
     ADMIN_NAME: str = "Admin"  # ឈ្មោះបង្ហាញ (Display Name) របស់ Admin
 
     @property
+    def has_legacy_postgres_url(self) -> bool:
+        """ពិនិត្យថាតើមាន DATABASE_URL បែប PostgreSQL សល់ពីមុនឬអត់"""
+        for raw in (self.DATABASE_URL, self.DATABASE_URL_INTERNAL):
+            url = (raw or "").strip().lower()
+            if url.startswith("postgres://") or url.startswith("postgresql://"):
+                return True
+        return False
+
+    @property
     def sqlite_file_path(self) -> str:
-        """ផ្លូវឯកសារ SQLite (បើកំណត់ SQLITE_PATH -> ប្រើវា បើអត់ -> backend/ecommerce.db)"""
+        """ផ្លូវឯកសារ SQLite — គាំទ្រ SQLITE_PATH, DATABASE_URL (sqlite:///...),
+        និង auto-detection សម្រាប់ Render (/var/data) ឬ local fallback"""
         custom = (self.SQLITE_PATH or "").strip()
-        return custom or str(DEFAULT_SQLITE_FILE)
+        if custom:
+            return custom
+
+        # គាំទ្រ DATABASE_URL បើជា sqlite://
+        for raw in (self.DATABASE_URL, self.DATABASE_URL_INTERNAL):
+            db_url = (raw or "").strip()
+            if db_url.startswith("sqlite:///"):
+                return db_url.replace("sqlite:///", "", 1)
+            if db_url.startswith("sqlite://"):
+                return db_url.replace("sqlite://", "", 1)
+
+        # បើនៅលើ Render / Docker ហើយមានថត /var/data -> ប្រើ /var/data/ecommerce.db
+        render_flag = (self.RENDER or "").strip().lower() in ("true", "1", "yes")
+        var_data = Path("/var/data")
+        if (render_flag or var_data.exists()) and var_data.is_dir():
+            return "/var/data/ecommerce.db"
+
+        return str(DEFAULT_SQLITE_FILE)
 
     @property
     def cors_origins_list(self) -> list:

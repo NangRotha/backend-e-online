@@ -299,14 +299,27 @@ def _deploy_diagnostics():
     )
 
     # ⚠️ SECRET_KEY Default = JWT អាចក្លែងបាន
-    if app_settings.SECRET_KEY == "your-secret-key-change-this":
+    if app_settings.SECRET_KEY in ("your-secret-key-change-this", "replace-with-a-long-random-secret"):
         if on_render:
             warnings.append(
-                "SECRET_KEY កំពុងប្រើតម្លៃ Default — សូមកំណត់ SECRET_KEY ថ្មីក្នុង "
+                "SECRET_KEY កំពុងប្រើតម្លៃ Default/Placeholder — សូមកំណត់ SECRET_KEY ថ្មី (random 32+ chars) ក្នុង "
                 "Render → Environment (មិនដូច្នេះ JWT អាចក្លែងបាន)"
             )
         else:
             print("   SECRET_KEY : ⚠️  default value (ok for local dev)", flush=True)
+
+    if app_settings.has_legacy_postgres_url:
+        warnings.append(
+            "រកឃើញ DATABASE_URL/DATABASE_URL_INTERNAL បែប PostgreSQL ក្នុង Render Environment — "
+            "Backend ដំណើរការលើ SQLite ដោយស្វ័យប្រវត្តិ។ សូមចូល Render → Environment Variables ហើយលុប "
+            "DATABASE_URL, DATABASE_URL_INTERNAL, និង DB_ENGINE ចេញ។"
+        )
+
+    if on_render and (not app_settings.ADMIN_EMAIL or not app_settings.ADMIN_PASSWORD):
+        warnings.append(
+            "ខ្វះ ADMIN_EMAIL ឬ ADMIN_PASSWORD ក្នុង Render Environment Variables — គ្មាន Admin ត្រូវបានបង្កើតទេ! "
+            "សូមបន្ថែម ADMIN_EMAIL=... និង ADMIN_PASSWORD=... ក្នុង Render ដើម្បីចូល Admin Panel បាន។"
+        )
 
     for w in warnings:
         print(f"⚠️  WARNING: {w}", flush=True)

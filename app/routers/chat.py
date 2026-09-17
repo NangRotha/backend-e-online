@@ -16,7 +16,10 @@ MAX_TOOL_ROUNDS = 3
 
 def chat_enabled() -> bool:
     """ពិនិត្យថាបានកំណត់ DeepSeek API Key ឬអត់"""
-    return bool(settings.DEEPSEEK_API_KEY)
+    key = (settings.DEEPSEEK_API_KEY or "").strip()
+    if not key or key in ("your-deepseek-key", "PUT_REAL_KEY_OR_SKIP_THIS_LINE"):
+        return False
+    return True
 
 # ============================================================
 # Tools (Function Calling) — ឲ្យ AI អាចស្វែងរកទិន្នន័យពិតក្នុង Database

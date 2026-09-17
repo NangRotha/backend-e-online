@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
@@ -7,10 +7,8 @@ from .config import DEFAULT_SQLITE_FILE, settings
 # ============================================================
 # 🗄️ Database = **SQLite តែមួយប៉ុណ្ណោះ**
 # ------------------------------------------------------------
-# - ឯកសារ DB ស្ថិតតាម `SQLITE_PATH` ឬ `backend/ecommerce.db` ដោយស្វ័យប្រវត្តិ
-#   (តារាង + Migration រត់ខ្លួនឯងពេល Startup តាម `init_db()`)
-# - បើ `SQLITE_PATH` ចង្អុលទៅថតដែលសរសេរមិនបាន (ឧ. /var/data លើ Render
-#   ដែលគ្មាន Persistent Disk) -> Fallback ទៅ `backend/ecommerce.db` វិញ
+# - ឯកសារ DB ស្ថិតតាម `SQLITE_PATH`, `DATABASE_URL` (sqlite://) ឬ `backend/ecommerce.db`
+# - បើរកឃើញ DATABASE_URL បែប PostgreSQL សល់ពីមុន វានឹងរំលងដោយសុវត្ថិភាព និងបន្តប្រើ SQLite
 # ============================================================
 DATABASE_URL = f"sqlite:///{settings.sqlite_file_path}"
 
@@ -18,9 +16,34 @@ DATABASE_URL = f"sqlite:///{settings.sqlite_file_path}"
 EFFECTIVE_DATABASE_URL = DATABASE_URL
 
 
+def _configure_sqlite_pragmas(engine_obj):
+    """កំណត់ SQLite PRAGMA សម្រាប់បង្កើនល្បឿន និងការពារ database lock ពេលមាន request ច្រើន"""
+    @event.listens_for(engine_obj, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        finally:
+            cursor.close()
+    return engine_obj
+
+
 def _create_engine():
     """បង្កើត SQLite Engine (បង្កើតថតមេរបស់ឯកសារ DB បើចាំបាច់)"""
     global EFFECTIVE_DATABASE_URL
+
+    if settings.has_legacy_postgres_url:
+        print(
+            "ℹ️  Environment: រកឃើញ DATABASE_URL (PostgreSQL) — Backend នេះដំណើរការលើ SQLite "
+            "ហើយកំពុងប្រើប្រាស់ SQLite ដោយស្វ័យប្រវត្តិ (PostgreSQL ត្រូវបានរំលង)។\n"
+            "   👉 Tip: អ្នកអាចលុប DATABASE_URL, DATABASE_URL_INTERNAL, និង DB_ENGINE ចេញពី Render Environment Variables បាន។",
+            flush=True,
+        )
 
     target = settings.sqlite_file_path
     directory = os.path.dirname(target)
@@ -37,18 +60,21 @@ def _create_engine():
                 flush=True,
             )
             EFFECTIVE_DATABASE_URL = fallback
-            return create_engine(
+            eng = create_engine(
                 fallback,
                 connect_args={"check_same_thread": False},
                 pool_pre_ping=True,
             )
+            return _configure_sqlite_pragmas(eng)
 
+    EFFECTIVE_DATABASE_URL = f"sqlite:///{target}"
     # SQLite ត្រូវការ `check_same_thread=False` ព្រោះ FastAPI ប្រើច្រើន Thread
-    return create_engine(
-        DATABASE_URL,
+    eng = create_engine(
+        EFFECTIVE_DATABASE_URL,
         connect_args={"check_same_thread": False},
         pool_pre_ping=True,
     )
+    return _configure_sqlite_pragmas(eng)
 
 
 engine = _create_engine()

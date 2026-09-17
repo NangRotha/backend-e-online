@@ -19,13 +19,23 @@ _BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 def smtp_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ SMTP credentials នៅក្នុង .env ឬអត់"""
-    return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
+    user = (settings.SMTP_USER or "").strip()
+    pwd = (settings.SMTP_PASSWORD or "").strip()
+    if not (user and pwd):
+        return False
+    if pwd in ("your-app-password", "PUT_YOUR_STRONG_ADMIN_PASSWORD", "password"):
+        return False
+    return True
 
 
 def brevo_api_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ Brevo HTTP API Key (xkeysib-...)"""
     key = (settings.BREVO_API_KEY or "").strip()
-    return bool(key and key.startswith("xkeysib"))
+    if not key or not key.startswith("xkeysib"):
+        return False
+    if key in ("xkeysib-xxxxxxxx", "PUT_REAL_xkeysib_KEY_OR_SKIP_THIS_LINE") or key.endswith("-xxxxxxxx"):
+        return False
+    return True
 
 
 def email_status() -> dict:

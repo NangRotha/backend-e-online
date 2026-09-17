@@ -5,7 +5,13 @@ from .config import settings
 
 def telegram_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ Telegram Bot (Token + Username) នៅក្នុង .env ឬអត់"""
-    return bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_USERNAME)
+    tok = (settings.TELEGRAM_BOT_TOKEN or "").strip()
+    user = (settings.TELEGRAM_BOT_USERNAME or "").strip()
+    if not (tok and user):
+        return False
+    if tok in ("123456:ABC-your-token", "PUT_REAL_BOT_TOKEN_OR_SKIP_THIS_LINE") or "your-token" in tok:
+        return False
+    return True
 
 def verify_telegram_auth(data: dict, max_age_seconds: int = 86400) -> bool:
     """

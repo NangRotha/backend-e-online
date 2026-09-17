@@ -40,7 +40,13 @@ KHQRCC_CHECKOUT_BASE = "https://checkout.khqr.cc/payment/khqrcc"
 
 def payment_configured() -> bool:
     """ពិនិត្យថាបានកំណត់ KHQRcc (Profile ID + Secret Key) ឬអត់"""
-    return bool(settings.KHQRCC_PROFILE_ID and settings.KHQRCC_SECRET_KEY)
+    profile_id = (settings.KHQRCC_PROFILE_ID or "").strip()
+    secret_key = (settings.KHQRCC_SECRET_KEY or "").strip()
+    if not (profile_id and secret_key):
+        return False
+    if secret_key in ("REGENERATE-THIS-KEY", "PUT_REAL_SECRET_KEY_OR_SKIP_THIS_LINE"):
+        return False
+    return True
 
 
 def _extract_qr_fields(result: dict) -> tuple[str, str]:
