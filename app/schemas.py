@@ -107,6 +107,7 @@ class ProductCreate(BaseModel):
     category: str = ""
     is_on_sale: bool = False
     sale_percent: float = 0
+    rating: Optional[float] = 5.0
 
 class ProductUpdate(BaseModel):
     """អនុញ្ញាតកែតម្រូវដោយផ្នែក (partial) — ឧ. កែតម្លៃតែប៉ុណ្ណោះ។
@@ -122,6 +123,7 @@ class ProductUpdate(BaseModel):
     category: Optional[str] = None
     is_on_sale: Optional[bool] = None
     sale_percent: Optional[float] = None
+    rating: Optional[float] = None
 
 class ProductOut(ProductCreate):
     id: int

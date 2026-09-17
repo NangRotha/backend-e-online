@@ -28,6 +28,7 @@ class Product(Base):
     category = Column(String)
     is_on_sale = Column(Boolean, default=False)
     sale_percent = Column(Float, default=0)  # ឧទាហរណ៍ 10 = 10% discount
+    rating = Column(Float, default=5.0)  # ពិន្ទុផ្កាយផលិតផល (1.0 ដល់ 5.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Category(Base):
