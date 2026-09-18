@@ -101,6 +101,15 @@ async def checkout(
         if not customer_email:
             customer_email = current_user.email or ""
 
+    shipping_addr = order.shipping_address or ""
+    # ពិនិត្យថាអតិថិជនកុម្ម៉ង់នៅភ្នំពេញ (Cash on Delivery) ឬតាមបណ្តាខេត្ត (ABA Pay KHQR)
+    is_phnom_penh = (
+        "ភ្នំពេញ" in shipping_addr
+        or "phnom penh" in shipping_addr.lower()
+        or (order.payment_method or "").lower() == "cod"
+    )
+    payment_method = "cod" if is_phnom_penh else "aba_pay"
+
     new_order = models.Order(
         user_id=user_id,
         total_amount=total,
@@ -110,7 +119,8 @@ async def checkout(
         customer_name=(order.customer_name or "").strip() or profile_name or "Customer",
         customer_phone=(order.customer_phone or "").strip(),
         customer_email=customer_email,
-        shipping_address=order.shipping_address or "",
+        shipping_address=shipping_addr,
+        payment_method=payment_method,
         note=order.note or "",
     )
     db.add(new_order)
@@ -129,28 +139,31 @@ async def checkout(
         product.stock -= qty
     db.commit()
 
-    # បង្កើត ABA Pay / KHQRcc Payment (QR + Managed Checkout) ដោយស្វ័យប្រវត្តិ
-    payment = await create_order_payment(
-        order_id=new_order.id,
-        amount=total,
-        remark=f"Order #{new_order.id}",
-        items=[
-            {"name": product.name, "quantity": qty, "price": unit_price}
-            for product, qty, unit_price, *rest in purchased
-        ],
-        db=db,
-    )
-    if payment:
-        new_order.payment_ref = payment["transaction_id"]
-        # រក្សាទុក QR / Redirect URL ក្នុង Database
-        # -> អតិថិជន Refresh ឬបើកទំព័រឡើងវិញក៏ឃើញ QR ដដែល (មិនបាត់)
-        new_order.payment_qr_url = payment.get("qr_url") or ""
-        new_order.payment_url = payment.get("url") or ""
-        new_order.payment_checkout_url = payment.get("checkout_url") or ""
-        db.commit()
+    payment = None
+    # បង្កើត ABA Pay / KHQRcc Payment សម្រាប់តែការកុម្ម៉ង់តាមបណ្តាខេត្តប៉ុណ្ណោះ (ត្រូវគិតលុយមុន)
+    # នៅភ្នំពេញ មិនបង្ហាញ QR ទេ ព្រោះអីវ៉ាន់ដល់ដៃបានគិតលុយ (COD)
+    if payment_method != "cod":
+        payment = await create_order_payment(
+            order_id=new_order.id,
+            amount=total,
+            remark=f"Order #{new_order.id}",
+            items=[
+                {"name": product.name, "quantity": qty, "price": unit_price}
+                for product, qty, unit_price, *rest in purchased
+            ],
+            db=db,
+        )
+        if payment:
+            new_order.payment_ref = payment["transaction_id"]
+            # រក្សាទុក QR / Redirect URL ក្នុង Database
+            # -> អតិថិជន Refresh ឬបើកទំព័រឡើងវិញក៏ឃើញ QR ដដែល (មិនបាត់)
+            new_order.payment_qr_url = payment.get("qr_url") or ""
+            new_order.payment_url = payment.get("url") or ""
+            new_order.payment_checkout_url = payment.get("checkout_url") or ""
+            db.commit()
 
     # Redirect Checkout URL (ABA Pay Managed Checkout) — ប្រើជាជម្រើស
-    payment_url = payment["url"] if payment else f"https://pay.example.com/checkout/{uuid.uuid4()}"
+    payment_url = payment["url"] if payment else ""
 
     branding = payment_branding(db)
 
@@ -161,6 +174,7 @@ async def checkout(
         "order_id": new_order.id,
         "total_amount": total,
         "status": "pending",
+        "payment_method": payment_method,
         "payment_url": payment_url,
         "payment_checkout_url": payment["checkout_url"] if payment else "",
         "payment_enabled": payment is not None,
@@ -188,6 +202,7 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
         "order_id": order.id,
         "status": order.status,
         "total_amount": order.total_amount,
+        "payment_method": getattr(order, "payment_method", "aba_pay") or "aba_pay",
         "payment_enabled": bool(order.payment_ref),
         "payment_transaction_id": order.payment_ref,
         "payment_qr_url": order.payment_qr_url or None,

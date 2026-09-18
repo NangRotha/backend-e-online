@@ -107,6 +107,7 @@ class ProductCreate(BaseModel):
     category: str = ""
     is_on_sale: bool = False
     sale_percent: float = 0
+    original_price: Optional[float] = None
     rating: Optional[float] = 5.0
 
 class ProductUpdate(BaseModel):
@@ -123,12 +124,20 @@ class ProductUpdate(BaseModel):
     category: Optional[str] = None
     is_on_sale: Optional[bool] = None
     sale_percent: Optional[float] = None
+    original_price: Optional[float] = None
     rating: Optional[float] = None
 
 class ProductOut(ProductCreate):
     id: int
     class Config:
         from_attributes = True
+
+class BulkPriceAdjustRequest(BaseModel):
+    mode: str = "add_fixed"  # "add_fixed" (+ $), "add_percent" (+ %), "sub_fixed" (- $), "sub_percent" (- %)
+    operation: Optional[str] = None
+    value: float
+    category: Optional[str] = None  # None or "All" for all products
+    set_original_price: bool = True  # Preserve existing price in original_price
 
 class CheckoutItem(BaseModel):
     product_id: int
@@ -144,12 +153,14 @@ class CheckoutRequest(BaseModel):
     customer_name: Optional[str] = None   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
     customer_phone: Optional[str] = None  # លេខទូរសព្ទ
     customer_email: Optional[str] = None  # អ៊ីមែល (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
+    payment_method: Optional[str] = None  # 'cod' | 'aba_pay'
     note: Optional[str] = None            # កំណត់ចំណាំ (optional)
 
 class CheckoutResponse(BaseModel):
     order_id: int
     total_amount: float
     status: str
+    payment_method: Optional[str] = "aba_pay"  # 'cod' | 'aba_pay'
     payment_url: str = ""  # Redirect checkout (ABA Pay requestv2 — auto-redirect ទៅ Checkout)
     payment_checkout_url: str = ""  # Frontend Checkout ផ្ទាល់ (checkout.khqr.cc)
     payment_enabled: bool = False  # បានភ្ជាប់ ABA Pay / KHQRcc ឬអត់

@@ -136,3 +136,63 @@ def delete_product(
     # ជូនដំណឹង frontend-user ដើម្បីធ្វើបច្ចុប្បន្នភាពដោយស្វ័យប្រវត្តិ
     background_tasks.add_task(broadcast_products_changed)
     return {"message": "Deleted successfully"}
+
+# Admin: បន្ថែម/កែសម្រួលតម្លៃផលិតផលទាំងអស់លើតម្លៃចាស់ (Bulk Price Adjustment)
+@router.post("/admin/products/bulk-adjust-price")
+def bulk_adjust_price(
+    payload: schemas.BulkPriceAdjustRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(get_current_admin),
+):
+    """
+    បន្ថែម/កែសម្រួលតម្លៃផលិតផលទាំងអស់ (ឬតាម Category) លើតម្លៃចាស់៖
+    - mode="add_fixed"   : បន្ថែមទឹកប្រាក់ ($) លើតម្លៃចាស់ (ឧ. +$2)
+    - mode="add_percent" : បង្កើនភាគរយ (%) លើតម្លៃចាស់ (ឧ. +10%)
+    - mode="sub_fixed"   : បន្ថយទឹកប្រាក់ ($) ពីតម្លៃចាស់ (ឧ. -$2)
+    - mode="sub_percent" : បន្ថយភាគរយ (%) ពីតម្លៃចាស់ (ឧ. -10%)
+    """
+    query = db.query(models.Product)
+    if payload.category and payload.category.strip() and payload.category != "All":
+        query = query.filter(models.Product.category == payload.category.strip())
+
+    products = query.all()
+    if not products:
+        raise HTTPException(status_code=400, detail="No products found to adjust.")
+
+    val = float(payload.value)
+    if val < 0:
+        raise HTTPException(status_code=400, detail="Value must be non-negative.")
+
+    updated_count = 0
+    mode = (payload.operation or payload.mode or "add_fixed").lower()
+    for p in products:
+        current_price = float(p.price or 0.0)
+        new_price = current_price
+
+        if mode == "add_fixed":
+            new_price = current_price + val
+        elif mode == "add_percent":
+            new_price = current_price * (1.0 + (val / 100.0))
+        elif mode == "sub_fixed":
+            new_price = max(0.01, current_price - val)
+        elif mode == "sub_percent":
+            new_price = max(0.01, current_price * (1.0 - (val / 100.0)))
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
+
+        new_price = round(new_price, 2)
+
+        # រក្សាទុកតម្លៃចាស់ទៅក្នុង original_price
+        if payload.set_original_price:
+            p.original_price = current_price
+
+        p.price = new_price
+        updated_count += 1
+
+    db.commit()
+    background_tasks.add_task(broadcast_products_changed)
+    return {
+        "message": f"Successfully updated prices for {updated_count} products.",
+        "updated_count": updated_count,
+    }

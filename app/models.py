@@ -28,6 +28,7 @@ class Product(Base):
     category = Column(String)
     is_on_sale = Column(Boolean, default=False)
     sale_percent = Column(Float, default=0)  # ឧទាហរណ៍ 10 = 10% discount
+    original_price = Column(Float, nullable=True, default=None)  # តម្លៃដើម/ចាស់ (Strikethrough price ឧ. $25)
     rating = Column(Float, default=5.0)  # ពិន្ទុផ្កាយផលិតផល (1.0 ដល់ 5.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -67,6 +68,7 @@ class Order(Base):
     customer_phone = Column(String, nullable=True)  # លេខទូរសព្ទ
     customer_email = Column(String, default="")     # អ៊ីមែលអតិថិជន (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
     shipping_address = Column(String, default="")   # អាសយដ្ឋានដឹកជញ្ជូន
+    payment_method = Column(String, default="aba_pay")  # 'cod' (Cash on Delivery) | 'aba_pay' (ABA KHQR)
     note = Column(String, default="")               # កំណត់ចំណាំ (optional)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
