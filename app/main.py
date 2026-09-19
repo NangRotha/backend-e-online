@@ -108,6 +108,10 @@ def _bootstrap_site_settings():
             "payment_khr_rate": "4100",
             "khqrcc_profile_id": "MOgrEmjgLkEmYzovmfTH0HQUPLgJ6DFq",
             "khqrcc_secret_key": "EIiW0sBH4vWjzeovF5bRC6WwDHJYzvfK",
+            "telegram_bot_token": "8975197808:AAEbgpMagnJ2vGDSU_RDCMyTQ2dJHBDzxQQ",
+            "telegram_bot_username": "DomLumiereOrdersBot",
+            "telegram_chat_id": "8636603530",
+            "telegram_notifications_enabled": "true",
         }
         legacy_defaults = {
             "payment_company_name": {"", "My Shop", "KHMER UDOM ET CO.,LTD", "ShopeKh"},
@@ -115,6 +119,9 @@ def _bootstrap_site_settings():
             "payment_display_name": {"", "Udom ET", "Real Name"},
             "khqrcc_profile_id": {"", "64BHRPOl0tGc3IMdw3V1ysjwhFKVC8EH"},
             "khqrcc_secret_key": {"", "cr6NRkWA2q3sq3rbR4VZshMRZQIj56L6"},
+            "telegram_bot_token": {"", "123456:ABC-your-token", "PUT_REAL_BOT_TOKEN_OR_SKIP_THIS_LINE"},
+            "telegram_bot_username": {"", "YourShopBot", "MyShopBot"},
+            "telegram_chat_id": {"", "0"},
         }
         existing = {s.key: s for s in db.query(models.SiteSetting).all()}
         updated = 0
@@ -131,7 +138,7 @@ def _bootstrap_site_settings():
                     updated += 1
         if updated:
             db.commit()
-            print(f"✅ Site Settings bootstrap: បានកំណត់ {updated} settings (ABA Pay: Udom Shop / Udom)", flush=True)
+            print(f"✅ Site Settings bootstrap: បានកំណត់ {updated} settings (ABA Pay & Telegram Bot: @DomLumiereOrdersBot)", flush=True)
     except Exception as exc:  # noqa: BLE001
         print(f"⚠️  Site Settings bootstrap បរាជ័យ: {type(exc).__name__}: {exc}", flush=True)
     finally:

@@ -68,10 +68,12 @@ class Settings(BaseSettings):
     # យក API Key ពី https://app.brevo.com/settings/keys/api (xkeysib-...)
     BREVO_API_KEY: str = ""
 
-    # Telegram Login Widget — សម្រាប់ Register/Login ជាមួយ Telegram
-    # បង្កើត Bot តាម @BotFather ហើយកំណត់ Domain តាម /setdomain
-    TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_BOT_USERNAME: str = ""  # ឧ. MyShopBot (ដោយគ្មាន @)
+    # Telegram Bot & Order Notifications — ជូនដំណឹងពេលមានការកុម្ម៉ង់ថ្មី (New Orders)
+    TELEGRAM_BOT_TOKEN: str = "8975197808:AAEbgpMagnJ2vGDSU_RDCMyTQ2dJHBDzxQQ"
+    TELEGRAM_BOT_USERNAME: str = "DomLumiereOrdersBot"  # Bot username (ដោយគ្មាន @)
+    TELEGRAM_CHAT_ID: str = "8636603530"  # Admin Telegram ID សម្រាប់ទទួលសារ
+    TELEGRAM_NOTIFICATIONS_ENABLED: bool = True
+    ADMIN_FRONTEND_URL: str = "https://frontend-admin-e-online.vercel.app"
 
     # DeepSeek AI — សម្រាប់ AI Chatbot លើ Storefront
     # យក API Key ពី https://platform.deepseek.com

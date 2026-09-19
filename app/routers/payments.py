@@ -15,6 +15,7 @@ from ..database import get_db
 from ..config import settings
 from ..email_sender import smtp_configured, brevo_api_configured, send_order_receipt_email
 from ..ws_manager import broadcast_orders_changed
+from ..telegram import send_order_paid_telegram
 
 # qrcode ជា Optional — បើ Library មិនបានដំឡើង App នៅតែដំណើរការ (ត្រឡប់ QR ចេញពី Gateway)
 try:
@@ -514,6 +515,8 @@ def _mark_paid_and_notify(
     db.commit()
     # Real-time: Admin និង Storefront ទទួលដំណឹងភ្លាមៗថា Order បានបង់ប្រាក់រួច
     background_tasks.add_task(broadcast_orders_changed)
+    # Telegram Bot: ជូនដំណឹងថាការបង់ប្រាក់បានជោគជ័យទៅកាន់ Admin
+    background_tasks.add_task(send_order_paid_telegram, order.id)
     try:
         info = _load_order_receipt_data(db, order)
         # គាំទ្រទាំង Brevo HTTP API និង SMTP (email_sender ជ្រើសរើសខ្លួនឯង)

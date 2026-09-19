@@ -7,6 +7,8 @@ from ..database import get_db
 from ..deps import get_current_admin
 from ..storage import delete_upload_by_url
 from ..ws_manager import broadcast_orders_changed
+from ..telegram import send_order_status_telegram, test_telegram_connection
+from typing import Optional
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -205,7 +207,19 @@ def update_order_status(
     db.commit()
     # Real-time: ជូនដំណឹងទៅ Admin Panel ផ្សេងទៀត និង Storefront (Order Success)
     background_tasks.add_task(broadcast_orders_changed)
+    # Telegram Bot: ជូនដំណឹងពេលផ្លាស់ប្តូរស្ថានភាព Order ទៅកាន់ Admin
+    background_tasks.add_task(send_order_status_telegram, order.id, payload.status)
     return {"message": "Order status updated", "order_id": order.id, "status": order.status}
+
+@router.post("/telegram/test")
+def test_telegram(
+    payload: Optional[schemas.TelegramTestRequest] = None,
+    db: Session = Depends(_admin),
+):
+    """Admin: ធ្វើតេស្តការតភ្ជាប់ Telegram Bot និងផ្ញើសារសាកល្បងទៅកាន់ Admin Telegram ID"""
+    token = payload.bot_token if payload else None
+    chat_id = payload.chat_id if payload else None
+    return test_telegram_connection(bot_token=token, chat_id=chat_id, db=db)
 
 # ==========================================
 # Discounts Management

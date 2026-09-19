@@ -59,6 +59,10 @@ class TelegramAuthData(BaseModel):
     auth_date: int
     hash: str
 
+class TelegramTestRequest(BaseModel):
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
+
 class CategoryCreate(BaseModel):
     name: str
     description: str = ""

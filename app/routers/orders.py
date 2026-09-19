@@ -6,6 +6,7 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user_optional
 from ..ws_manager import broadcast_orders_changed
+from ..telegram import send_order_created_telegram
 from .payments import create_order_payment
 import uuid
 
@@ -169,6 +170,8 @@ async def checkout(
 
     # Real-time: ជូនដំណឹងទៅ Admin (Orders ថ្មីឡើងភ្លាម) និង Storefront
     background_tasks.add_task(broadcast_orders_changed)
+    # Telegram Bot: ផ្ញើដំណឹងការកុម្ម៉ង់ថ្មីភ្លាមៗទៅកាន់ Admin Telegram (@DomLumiereOrdersBot)
+    background_tasks.add_task(send_order_created_telegram, new_order.id)
 
     return {
         "order_id": new_order.id,
