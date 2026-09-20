@@ -1,5 +1,11 @@
-from fastapi import FastAPI
+import hashlib
+import mimetypes
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from .database import SessionLocal, init_db
 from .config import settings as app_settings
@@ -154,6 +160,44 @@ _bootstrap_admin()
 # 💳 Bootstrap Site Settings សម្រាប់ ABA Pay / Bakong Wallet
 _bootstrap_site_settings()
 
+
+def _optimize_existing_videos() -> None:
+    """ពិនិត្យ និង Optimize វីដេអូ MP4 ទាំងអស់ក្នុង uploads/ ឱ្យទៅជា Faststart ដោយស្វ័យប្រវត្តិ
+    ដើម្បីឱ្យ Browser អាច Play ភ្លាមៗ (moov atom នៅខាងដើម)។"""
+    from .storage import DEFAULT_UPLOAD_DIR, UPLOAD_DIR, faststart_mp4
+
+    count = 0
+    seen = set()
+    for d in (UPLOAD_DIR, DEFAULT_UPLOAD_DIR):
+        if not d.exists() or not d.is_dir():
+            continue
+        try:
+            for mp4_file in d.glob("*.mp4"):
+                canonical = str(mp4_file.resolve())
+                if canonical in seen:
+                    continue
+                seen.add(canonical)
+                try:
+                    size = mp4_file.stat().st_size
+                    if size < 32:
+                        continue
+                    raw = mp4_file.read_bytes()
+                    optimized = faststart_mp4(raw)
+                    if len(optimized) != len(raw) or optimized[:32] != raw[:32]:
+                        mp4_file.write_bytes(optimized)
+                        count += 1
+                        print(f"🎬 Faststart optimized: {mp4_file.name} ({size} bytes)", flush=True)
+                except Exception as exc:
+                    print(f"⚠️ Faststart error on {mp4_file.name}: {exc}", flush=True)
+        except Exception:
+            pass
+    if count:
+        print(f"✅ Video optimization: បានកែសម្រួល {count} MP4 ទៅជា Faststart រួចរាល់", flush=True)
+
+
+# 🎬 Optimize វីដេអូដែលធ្លាប់ Upload ពីមុនឱ្យទៅជា Faststart
+_optimize_existing_videos()
+
 # ព្រមានបើ Email (OTP) មិនទាន់កំណត់ — ពេលនោះ OTP នឹងបង្ហាញក្នុង Dev Mode តែប៉ុណ្ណោះ
 _email_cfg = email_status()
 if not _email_cfg["configured"]:
@@ -198,10 +242,126 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# បម្រើរូបភាពដែល Upload ពីកុំព្យូទ័រ (/uploads/...)
-# ប្រើ directory ដែលអាចសរសេរបាន (UPLOAD_DIR បើអាច បើអត់ -> backend/uploads/)
-# check_dir=False -> កុំ crash បើ directory នៅមិនទាន់មាន
+# បម្រើរូបភាព និងវីដេអូដែល Upload ពីកុំព្យូទ័រ (/uploads/...)
+# គាំទ្រ HTTP Range Requests (206 Partial Content) ពេញលេញសម្រាប់ Video Streaming
 _EFFECTIVE_UPLOAD_DIR = ensure_upload_dir()
+
+
+@app.head("/uploads/{file_path:path}")
+@app.get("/uploads/{file_path:path}")
+async def serve_upload_file(file_path: str, request: Request):
+    """បម្រើ File ក្នុង uploads ជាមួយ Range Requests (206 Partial Content)
+    ចាំបាច់សម្រាប់ HTML5 Video streaming (MP4/WebM) ដើម្បីឱ្យ Browser ចាក់ភ្លាមៗ។"""
+    from .storage import DEFAULT_UPLOAD_DIR
+
+    clean_name = os.path.normpath(file_path).lstrip("/\\")
+    full_path = (_EFFECTIVE_UPLOAD_DIR / clean_name).resolve()
+    effective_dir = _EFFECTIVE_UPLOAD_DIR.resolve()
+
+    # សុវត្ថិភាព Directory Traversal
+    if not str(full_path).startswith(str(effective_dir)) or not full_path.is_file():
+        fallback_dir = DEFAULT_UPLOAD_DIR.resolve()
+        fallback_path = (DEFAULT_UPLOAD_DIR / clean_name).resolve()
+        if str(fallback_path).startswith(str(fallback_dir)) and fallback_path.is_file():
+            full_path = fallback_path
+        else:
+            raise HTTPException(status_code=404, detail="File not found")
+
+    file_size = full_path.stat().st_size
+    mtime = full_path.stat().st_mtime
+    etag = f'"{hashlib.md5(f"{file_size}-{mtime}".encode()).hexdigest()}"'
+
+    media_type, _ = mimetypes.guess_type(str(full_path))
+    if not media_type:
+        ext = full_path.suffix.lower()
+        if ext in (".mp4", ".m4v"):
+            media_type = "video/mp4"
+        elif ext == ".webm":
+            media_type = "video/webm"
+        elif ext in (".jpg", ".jpeg"):
+            media_type = "image/jpeg"
+        elif ext == ".png":
+            media_type = "image/png"
+        elif ext == ".webp":
+            media_type = "image/webp"
+        else:
+            media_type = "application/octet-stream"
+
+    # HEAD Request -> ត្រឡប់ headers រួមទាំង Accept-Ranges
+    if request.method == "HEAD":
+        return Response(
+            status_code=200,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Content-Type": media_type,
+                "ETag": etag,
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if not range_header or not range_header.strip().startswith("bytes="):
+        return FileResponse(
+            full_path,
+            media_type=media_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "ETag": etag,
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+
+    # Parse Range: bytes=start-end
+    range_val = range_header.replace("bytes=", "").strip()
+    if range_val.startswith("-"):
+        suffix_len = int(range_val[1:])
+        start = max(0, file_size - suffix_len)
+        end = file_size - 1
+    else:
+        parts = range_val.split("-", 1)
+        start = int(parts[0]) if parts[0] else 0
+        end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
+
+    if start >= file_size or start > end:
+        return Response(
+            status_code=416,
+            headers={
+                "Content-Range": f"bytes */{file_size}",
+                "Accept-Ranges": "bytes",
+            },
+        )
+
+    end = min(end, file_size - 1)
+    content_length = (end - start) + 1
+
+    def iterfile(path, offset, total_bytes, chunk_size=256 * 1024):
+        with open(path, "rb") as f:
+            f.seek(offset)
+            remaining = total_bytes
+            while remaining > 0:
+                chunk = f.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(content_length),
+        "Content-Type": media_type,
+        "ETag": etag,
+        "Cache-Control": "public, max-age=86400",
+    }
+    return StreamingResponse(
+        iterfile(full_path, start, content_length),
+        status_code=206,
+        headers=headers,
+        media_type=media_type,
+    )
+
+
 app.mount(
     "/uploads",
     StaticFiles(directory=_EFFECTIVE_UPLOAD_DIR, check_dir=False),

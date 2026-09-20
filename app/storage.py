@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import re
+import struct
 import time
 import uuid
 import urllib.parse
@@ -247,6 +248,97 @@ def _get_cloudinary():
     return cloudinary
 
 
+def faststart_mp4(data: bytes) -> bytes:
+    """Relocate the MP4 moov atom before mdat (Faststart) for instant web playback.
+
+    If moov is already before mdat or file is not a valid MP4, returns data unchanged.
+    Adjusts stco (32-bit) and co64 (64-bit) chunk offset tables.
+    """
+    if len(data) < 32:
+        return data
+
+    try:
+        pos = 0
+        atoms = []
+        moov_idx = -1
+        mdat_idx = -1
+
+        while pos < len(data) - 8:
+            size = struct.unpack(">I", data[pos : pos + 4])[0]
+            atom_type = data[pos + 4 : pos + 8]
+            if size == 1:
+                if pos + 16 > len(data):
+                    break
+                size = struct.unpack(">Q", data[pos + 8 : pos + 16])[0]
+            elif size == 0:
+                size = len(data) - pos
+
+            if size <= 0 or pos + size > len(data):
+                break
+
+            atoms.append((atom_type, pos, size))
+            if atom_type == b"moov":
+                moov_idx = len(atoms) - 1
+            elif atom_type == b"mdat":
+                mdat_idx = len(atoms) - 1
+            pos += size
+
+        # If moov is already before mdat, or not found, return as-is
+        if moov_idx == -1 or mdat_idx == -1 or moov_idx < mdat_idx:
+            return data
+
+        moov_type, moov_pos, moov_size = atoms[moov_idx]
+        moov_bytes = bytearray(data[moov_pos : moov_pos + moov_size])
+        shift = moov_size
+
+        # Patch chunk offsets inside moov: stco (32-bit) and co64 (64-bit)
+        p = 0
+        while p < len(moov_bytes) - 8:
+            box_type = moov_bytes[p + 4 : p + 8]
+            if box_type == b"stco":
+                box_size = struct.unpack(">I", moov_bytes[p : p + 4])[0]
+                if p + 16 <= len(moov_bytes):
+                    count = struct.unpack(">I", moov_bytes[p + 12 : p + 16])[0]
+                    entry_p = p + 16
+                    for _ in range(count):
+                        if entry_p + 4 > len(moov_bytes):
+                            break
+                        old_off = struct.unpack(">I", moov_bytes[entry_p : entry_p + 4])[0]
+                        moov_bytes[entry_p : entry_p + 4] = struct.pack(">I", old_off + shift)
+                        entry_p += 4
+                p += box_size if box_size > 0 else 8
+            elif box_type == b"co64":
+                box_size = struct.unpack(">I", moov_bytes[p : p + 4])[0]
+                if p + 16 <= len(moov_bytes):
+                    count = struct.unpack(">I", moov_bytes[p + 12 : p + 16])[0]
+                    entry_p = p + 16
+                    for _ in range(count):
+                        if entry_p + 8 > len(moov_bytes):
+                            break
+                        old_off = struct.unpack(">Q", moov_bytes[entry_p : entry_p + 8])[0]
+                        moov_bytes[entry_p : entry_p + 8] = struct.pack(">Q", old_off + shift)
+                        entry_p += 8
+                p += box_size if box_size > 0 else 8
+            else:
+                p += 1
+
+        # Reassemble atoms: atoms before mdat + patched moov + mdat + rest
+        result = bytearray()
+        for i, (atype, apos, asize) in enumerate(atoms):
+            if i == mdat_idx:
+                result.extend(moov_bytes)
+                result.extend(data[apos : apos + asize])
+            elif i == moov_idx:
+                continue
+            else:
+                result.extend(data[apos : apos + asize])
+
+        return bytes(result)
+    except Exception as exc:
+        print(f"⚠️ faststart_mp4 skipped: {exc}", flush=True)
+        return data
+
+
 def save_upload(content: bytes, filename: str, folder: str = "ecommerce") -> dict:
     """រក្សាទុកឯកសារដែល Upload ពីកុំព្យូទ័រ៖
     - បើកំណត់ UploadThing -> ផ្ទុកទៅ UploadThing CDN (URL អចិន្ត្រៃយ៍ មិនបាត់ពេល Redeploy)
@@ -256,6 +348,10 @@ def save_upload(content: bytes, filename: str, folder: str = "ecommerce") -> dic
     """
     ext = Path(filename).suffix.lower()
     media_type = "video" if ext in ALLOWED_VIDEO_EXTENSIONS else "image"
+
+    # Faststart: ផ្លាស់ប្តូរ moov atom ទៅមុខឯកសារ MP4 ដើម្បីឱ្យ web player ចាក់ភ្លាមៗ
+    if ext in (".mp4", ".m4v"):
+        content = faststart_mp4(content)
 
     # 1) UploadThing (ពេញចិត្តបំផុត)
     if uploadthing_configured():
