@@ -102,12 +102,21 @@ async def checkout(
         if not customer_email:
             customer_email = current_user.email or ""
 
-    shipping_addr = order.shipping_address or ""
+    shipping_addr = (order.shipping_address or "").strip()
     # ពិនិត្យថាអតិថិជនកុម្ម៉ង់នៅភ្នំពេញ (Cash on Delivery) ឬតាមបណ្តាខេត្ត (ABA Pay KHQR)
+    pp_keywords = [
+        "ភ្នំពេញ", "phnom penh", "phnompenh", "ស្ទឹងមានជ័យ", "steung meanchey",
+        "ទួលគោក", "toul kork", "ដូនពេញ", "daun penh", "ចំការមន", "chamkarmon",
+        "៧មករា", "7មករា", "prampi makara", "បឹងកេងកង", "boeung keng kang", "bkk",
+        "សែនសុខ", "sen sok", "ឫស្សីកែវ", "russei keo", "ច្បារអំពៅ", "chbar ampov",
+        "ជ្រោយចង្វារ", "chroy changvar", "ព្រែកព្នៅ", "prek pnov", "ដង្កោ", "dangkao",
+        "ពោធិ៍សែនជ័យ", "ពោធិសែនជ័យ", "pur senchey", "por senchey", "កំបូល", "kamboul",
+        "មានជ័យ", "meanchey"
+    ]
+    addr_lower = shipping_addr.lower()
     is_phnom_penh = (
-        "ភ្នំពេញ" in shipping_addr
-        or "phnom penh" in shipping_addr.lower()
-        or (order.payment_method or "").lower() == "cod"
+        (order.payment_method or "").lower() == "cod"
+        or any(k in addr_lower for k in pp_keywords)
     )
     payment_method = "cod" if is_phnom_penh else "aba_pay"
 

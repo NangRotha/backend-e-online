@@ -257,12 +257,33 @@ def send_order_created_telegram(order_id: int):
         total_usd = float(order.total_amount or 0.0)
         total_khr = int(round(total_usd * khr_rate))
 
-        # វិធីសាស្ត្រទូទាត់
-        is_cod = (order.payment_method or "").lower() == "cod" or (
-            order.shipping_address
-            and ("ភ្នំពេញ" in order.shipping_address or "phnom penh" in order.shipping_address.lower())
-        )
+        # អាសយដ្ឋានដឹកជញ្ជូន
+        raw_address = (order.shipping_address or "").strip()
+
+        # ពិនិត្យទីតាំងភ្នំពេញ និងវិធីសាស្ត្រទូទាត់
+        pp_keywords = [
+            "ភ្នំពេញ", "phnom penh", "phnompenh", "ស្ទឹងមានជ័យ", "steung meanchey",
+            "ទួលគោក", "toul kork", "ដូនពេញ", "daun penh", "ចំការមន", "chamkarmon",
+            "៧មករា", "7មករា", "prampi makara", "បឹងកេងកង", "boeung keng kang", "bkk",
+            "សែនសុខ", "sen sok", "ឫស្សីកែវ", "russei keo", "ច្បារអំពៅ", "chbar ampov",
+            "ជ្រោយចង្វារ", "chroy changvar", "ព្រែកព្នៅ", "prek pnov", "ដង្កោ", "dangkao",
+            "ពោធិ៍សែនជ័យ", "ពោធិសែនជ័យ", "pur senchey", "por senchey", "កំបូល", "kamboul",
+            "មានជ័យ", "meanchey"
+        ]
+        addr_lower = raw_address.lower()
+        is_pp_addr = any(k in addr_lower for k in pp_keywords)
+        is_cod = (order.payment_method or "").lower() == "cod" or is_pp_addr
         payment_badge = "💵 <b>គិតលុយពេលដល់ដៃ (COD)</b>" if is_cod else "🏦 <b>ABA Pay / KHQR (ត្រូវគិតលុយមុន)</b>"
+
+        # Format អាសយដ្ឋានដឹកឱ្យស្អាត (បើមាន '—' បំបែក រៀបចំឱ្យងាយមើល ដាក់អាសយដ្ឋានលម្អិតនៅមុខ)
+        if "—" in raw_address:
+            parts = [p.strip() for p in raw_address.split("—") if p.strip()]
+            if len(parts) >= 2:
+                shipping_display = f"{parts[1]}, {parts[0]}"
+            else:
+                shipping_display = raw_address
+        else:
+            shipping_display = raw_address or "ភ្នំពេញ"
 
         # បញ្ជីទំនិញ
         item_lines = []
@@ -294,7 +315,7 @@ def send_order_created_telegram(order_id: int):
             f"👤 <b>អតិថិជន:</b> {order.customer_name or 'Customer'}\n"
             f"📞 <b>លេខទូរស័ព្ទ:</b> {phone_display}\n"
             f"{email_section}"
-            f"📍 <b>អាសយដ្ឋានដឹក:</b> {order.shipping_address or 'ភ្នំពេញ'}\n"
+            f"📍 <b>អាសយដ្ឋានដឹក:</b> {shipping_display}\n"
             f"💳 <b>វិធីទូទាត់:</b> {payment_badge}\n"
             f"\n"
             f"📦 <b>ទំនិញដែលបានទិញ:</b>\n"
