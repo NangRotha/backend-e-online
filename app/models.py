@@ -61,8 +61,9 @@ class Order(Base):
     promo_code = Column(String, nullable=True)
     payment_ref = Column(String, nullable=True)
     payment_qr_url = Column(String, default="")   # រូប QR (KHQR) — រក្សាទុកដើម្បីបង្ហាញឡើងវិញ
+    payment_qr = Column(String, default="")       # EMV QR String (សម្រាប់ Deeplink / ABA Mobile App)
     payment_url = Column(String, default="")      # Redirect Checkout URL (ABA Pay requestv2)
-    payment_checkout_url = Column(String, default="")  # Frontend Checkout URL (checkout.khqr.cc)
+    payment_checkout_url = Column(String, default="")  # Frontend Checkout URL
     # ព័ត៌មានអ្នកទទួល / ដឹកជញ្ជូន (បញ្ចូលពីទំព័រ Checkout)
     customer_name = Column(String, nullable=True)   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
     customer_phone = Column(String, nullable=True)  # លេខទូរសព្ទ

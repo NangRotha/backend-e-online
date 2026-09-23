@@ -168,12 +168,20 @@ async def checkout(
             # រក្សាទុក QR / Redirect URL ក្នុង Database
             # -> អតិថិជន Refresh ឬបើកទំព័រឡើងវិញក៏ឃើញ QR ដដែល (មិនបាត់)
             new_order.payment_qr_url = payment.get("qr_url") or ""
+            new_order.payment_qr = payment.get("qr") or ""
             new_order.payment_url = payment.get("url") or ""
-            new_order.payment_checkout_url = payment.get("checkout_url") or ""
+            new_order.payment_checkout_url = payment.get("url") or ""
             db.commit()
 
-    # Redirect Checkout URL (ABA Pay Managed Checkout) — ប្រើជាជម្រើស
+    # Redirect Checkout URL (ABA Pay Managed Checkout — requestv2)
     payment_url = payment["url"] if payment else ""
+    raw_qr = payment.get("qr") if payment else ""
+    from urllib.parse import quote
+    aba_deeplink = (
+        f"abamobilebank://ababank.com?type=payway&qrcode={quote(raw_qr)}"
+        if raw_qr
+        else None
+    )
 
     branding = payment_branding(db)
 
@@ -188,11 +196,12 @@ async def checkout(
         "status": "pending",
         "payment_method": payment_method,
         "payment_url": payment_url,
-        "payment_checkout_url": payment["checkout_url"] if payment else "",
+        "payment_checkout_url": payment_url,
         "payment_enabled": payment is not None,
         "payment_transaction_id": payment["transaction_id"] if payment else None,
         "payment_qr_url": payment["qr_url"] if payment else None,
-        "payment_qr": payment["qr"] if payment else None,
+        "payment_qr": raw_qr or None,
+        "payment_aba_deeplink": aba_deeplink,
         "payment_company_name": branding["company_name"],
         "payment_display_name": branding["display_name"],
         "payment_bakong_id": branding["bakong_id"],
@@ -210,6 +219,17 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     branding = payment_branding(db)
+
+    from urllib.parse import quote
+    raw_qr = getattr(order, "payment_qr", None) or ""
+    aba_deeplink = (
+        f"abamobilebank://ababank.com?type=payway&qrcode={quote(raw_qr)}"
+        if raw_qr
+        else None
+    )
+    # ធានាថា URL ជា requestv2 ដែលមិន Session Expired
+    valid_url = order.payment_url or order.payment_checkout_url or ""
+
     return {
         "order_id": order.id,
         "status": order.status,
@@ -218,8 +238,10 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
         "payment_enabled": bool(order.payment_ref),
         "payment_transaction_id": order.payment_ref,
         "payment_qr_url": order.payment_qr_url or None,
-        "payment_url": order.payment_url or None,
-        "payment_checkout_url": order.payment_checkout_url or None,
+        "payment_qr": raw_qr or None,
+        "payment_aba_deeplink": aba_deeplink,
+        "payment_url": valid_url or None,
+        "payment_checkout_url": valid_url or None,
         "payment_company_name": branding["company_name"],
         "payment_display_name": branding["display_name"],
         "payment_bakong_id": branding["bakong_id"],

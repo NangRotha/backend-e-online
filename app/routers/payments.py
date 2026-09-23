@@ -188,16 +188,21 @@ def build_checkout_url(
     items_b64: str = "",
     custom_fields_b64: str = "",
 ) -> str:
-    """Frontend Checkout URL ផ្ទាល់ (`checkout.anajakpay.com/payment/khqrcc/{profile}`)
+    """Frontend Checkout URL — ប្រើ Managed Checkout (requestv2)
 
-    លឿនជាងមួយជំហាត់ (មិនបាច់ Redirect) — ប្រើសម្រាប់ Link / “Open checkout”
+    Auto-redirect ទៅ checkout.anajakpay.com ជាមួយ token/timestamp ត្រឹមត្រូវ (មិន Session Expired)
     """
-    query = urlencode(
-        _payment_params(
-            secret_key, transaction_id, amount, success_url, remark, cancel_url, items_b64, custom_fields_b64
-        )
+    return build_redirect_url(
+        profile_id,
+        secret_key,
+        transaction_id,
+        amount,
+        success_url,
+        remark,
+        cancel_url,
+        items_b64,
+        custom_fields_b64,
     )
-    return f"{KHQRCC_CHECKOUT_BASE}/{profile_id}?{query}"
 
 
 def _encode_custom_fields(data: Optional[Dict]) -> str:
