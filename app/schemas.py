@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserCreate(BaseModel):
@@ -186,6 +186,15 @@ class CheckoutRequest(BaseModel):
     payment_method: Optional[str] = None  # 'cod' | 'aba_pay'
     note: Optional[str] = None            # កំណត់ចំណាំ (optional)
 
+class OrderItemDetail(BaseModel):
+    product_id: int
+    name: str = ""
+    name_kh: str = ""
+    image_url: str = ""
+    quantity: int = 1
+    price: float = 0.0
+    variant: str = ""
+
 class CheckoutResponse(BaseModel):
     order_id: int
     total_amount: float
@@ -197,7 +206,7 @@ class CheckoutResponse(BaseModel):
     shipping_address: Optional[str] = None
     promo_code: Optional[str] = None
     note: Optional[str] = None
-    items: Optional[List[Dict]] = None
+    items: Optional[List[OrderItemDetail]] = None
     payment_method: Optional[str] = "aba_pay"  # 'cod' | 'aba_pay'
     payment_url: str = ""  # Redirect checkout (ABA Pay requestv2 — auto-redirect ទៅ Checkout)
     payment_checkout_url: str = ""  # Frontend Checkout ផ្ទាល់ (checkout.khqr.cc)

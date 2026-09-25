@@ -48,6 +48,20 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
+    # Security: Hide API documentation (/docs, /redoc, /openapi.json) in production
+    # Set ENABLE_DOCS=true in environment only when you explicitly need Swagger UI in production
+    ENABLE_DOCS: bool = False
+    ENVIRONMENT: str = "production"
+
+    @property
+    def show_docs(self) -> bool:
+        """Hide /docs, /redoc, and /openapi.json in production to protect endpoints from scanning"""
+        if self.ENABLE_DOCS:
+            return True
+        if (self.ENVIRONMENT or "").strip().lower() == "development" and not self.RENDER:
+            return True
+        return False
+
     # ============================================================
     # SMTP — សម្រាប់ផ្ញើ OTP Email (Gmail, Yahoo, Outlook, Zoho, Brevo...)
     # ⚠️ Gmail ត្រូវប្រើ App Password (មិនមែន password ធម្មតា)៖

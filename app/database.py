@@ -17,7 +17,7 @@ EFFECTIVE_DATABASE_URL = DATABASE_URL
 
 
 def _configure_sqlite_pragmas(engine_obj):
-    """កំណត់ SQLite PRAGMA សម្រាប់បង្កើនល្បឿន និងការពារ database lock ពេលមាន request ច្រើន"""
+    """កំណត់ SQLite PRAGMA សម្រាប់បង្កើនល្បឿន សុវត្ថិភាព និងការពារ database lock ពេលមាន request ច្រើន"""
     @event.listens_for(engine_obj, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
@@ -26,6 +26,7 @@ def _configure_sqlite_pragmas(engine_obj):
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA busy_timeout=5000")
             cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA temp_store=MEMORY")
         except Exception:
             pass
         finally:
@@ -50,6 +51,10 @@ def _create_engine():
     if directory:
         try:
             os.makedirs(directory, exist_ok=True)
+            try:
+                os.chmod(directory, 0o700)  # Directory accessible only by owner
+            except Exception:
+                pass
             # បើជាថត /var/data លើ Persistent Disk -> បង្កើត uploads directory ផងដែរ
             if directory == "/var/data" or directory.startswith("/var/data"):
                 os.makedirs("/var/data/uploads", exist_ok=True)
@@ -79,6 +84,13 @@ def _create_engine():
             print(f"📦 Persistent Disk: បានចម្លងទិន្នន័យដំបូងពី {DEFAULT_SQLITE_FILE.name} ទៅកាន់ {target}", flush=True)
         except Exception as e:
             print(f"ℹ️ Persistent Disk: បង្កើតទិន្នន័យថ្មីនៅ {target} ({e})", flush=True)
+
+    # កំណត់សិទ្ធិឯកសារ Database (0600 = Read/Write តែម្ចាស់ Process ប៉ុណ្ណោះ ការពារការលួចអានពី user ផ្សេង)
+    if os.path.exists(target):
+        try:
+            os.chmod(target, 0o600)
+        except Exception:
+            pass
 
     EFFECTIVE_DATABASE_URL = f"sqlite:///{target}"
     # SQLite ត្រូវការ `check_same_thread=False` ព្រោះ FastAPI ប្រើច្រើន Thread

@@ -207,7 +207,12 @@ if not _email_cfg["configured"]:
         "    Add SMTP_* env vars (Gmail/Brevo/SendGrid) to fix."
     )
 
-app = FastAPI(title="E-commerce API")
+app = FastAPI(
+    title="E-commerce API",
+    docs_url="/docs" if app_settings.show_docs else None,
+    redoc_url="/redoc" if app_settings.show_docs else None,
+    openapi_url="/openapi.json" if app_settings.show_docs else None,
+)
 
 # CORS សម្រាប់អនុញ្ញាតឱ្យ Frontend (React Vite) ភ្ជាប់មក
 # - Dev localhost តែងតែអនុញ្ញាតដោយស្វ័យប្រវត្តិ
@@ -241,6 +246,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security Headers Middleware — ការពារ Clickjacking, MIME-sniffing, XSS & Information Disclosure
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    # Enforce request payload size safety (max 100MB)
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Payload too large")
+
+    response = await call_next(request)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if "server" in response.headers:
+        del response.headers["server"]
+    return response
 
 # បម្រើរូបភាព និងវីដេអូដែល Upload ពីកុំព្យូទ័រ (/uploads/...)
 # គាំទ្រ HTTP Range Requests (206 Partial Content) ពេញលេញសម្រាប់ Video Streaming
@@ -389,34 +413,15 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    """Render Health Check + បង្ហាញទីតាំងទិន្នន័យ (SQLite file នៅឯណា?)
+    """Render Health Check — Returns clean, secure status without leaking internal filesystem paths."""
+    from .storage import cloudinary_configured, uploadthing_configured
 
-    មិនមាន Secret ទេ — គ្រាន់តែបង្ហាញថា Database engine អ្វី ឯកសារនៅឯណា
-    និងចំនួនទិន្នន័យ ដើម្បីឱ្យអ្នកអាចពិនិត្យបានដោយ `curl /health`។
-    """
-    from .database import EFFECTIVE_DATABASE_URL
-
-    path = EFFECTIVE_DATABASE_URL.replace("sqlite:///", "", 1)
-    on_disk = path.startswith("/var/data")
-    info = {
-        "status": "ok",
-        "engine": "sqlite",
-        "url": EFFECTIVE_DATABASE_URL,
-        "file": path,
-        "on_persistent_disk": on_disk,
-        "note": (
-            "ឯកសារនេះស្ថិតលើ Persistent Disk (/var/data) ✓ ទិន្នន័យមិនបាត់ពេល Redeploy"
-            if on_disk
-            else "⚠️ ឯកសារនេះមិននៅលើ /var/data ទេ → បាត់ពេល Redeploy "
-            "(ត្រូវការ Persistent Disk + SQLITE_PATH=/var/data/ecommerce.db)"
-        ),
-    }
-
-    # ចំនួនទិន្នន័យ (ស្រាលបំផុត) — ដើម្បីដឹងថា Database ទទេ ឬមានទិន្នន័យ
+    db_status = "connected"
+    counts = {}
     try:
         db = SessionLocal()
         try:
-            info["counts"] = {
+            counts = {
                 "products": db.query(models.Product).count(),
                 "categories": db.query(models.Category).count(),
                 "orders": db.query(models.Order).count(),
@@ -426,17 +431,28 @@ def health_check():
         finally:
             db.close()
     except Exception as exc:  # noqa: BLE001
-        info["counts_error"] = f"{type(exc).__name__}"
+        db_status = f"unhealthy: {type(exc).__name__}"
 
-    from .storage import cloudinary_configured, uploadthing_configured
-
-    info["storage"] = (
+    storage_type = (
         "uploadthing"
         if uploadthing_configured()
         else "cloudinary"
         if cloudinary_configured()
         else "local-disk"
     )
+
+    info = {
+        "status": "ok" if db_status == "connected" else "degraded",
+        "database": db_status,
+        "storage": storage_type,
+        "counts": counts,
+    }
+
+    # Only include internal diagnostic path if docs are explicitly enabled in development
+    if app_settings.show_docs:
+        from .database import EFFECTIVE_DATABASE_URL
+        info["debug_db_url"] = EFFECTIVE_DATABASE_URL
+
     return info
 
 
@@ -456,6 +472,10 @@ def _deploy_diagnostics():
     print("─" * 64, flush=True)
     print(
         f"🚀 Environment : {'Render (production)' if on_render else 'Local / other'}",
+        flush=True,
+    )
+    print(
+        f"   Docs UI    : {'✅ Enabled (/docs)' if app_settings.show_docs else '🔒 Hidden in production (docs_url=None)'}",
         flush=True,
     )
     print(f"   Database   : SQLite → {EFFECTIVE_DATABASE_URL}", flush=True)
