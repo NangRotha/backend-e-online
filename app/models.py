@@ -18,7 +18,9 @@ class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
+    name_kh = Column(String, default="")  # ឈ្មោះជាភាសាខ្មែរ
     description = Column(String)
+    description_kh = Column(String, default="")  # ពណ៌នាសង្ខេបជាភាសាខ្មែរ
     price = Column(Float)
     stock = Column(Integer, default=0)
     image_url = Column(String, default="")  # រូបមេ (Main Image)
@@ -36,7 +38,9 @@ class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)  # ឈ្មោះ Category (ឧ. Electronics)
+    name_kh = Column(String, default="")  # ឈ្មោះ Category ជាភាសាខ្មែរ (ឧ. គ្រឿងអេឡិចត្រូនិច)
     description = Column(String, default="")  # ពណ៌នាសង្ខេប
+    description_kh = Column(String, default="")  # ពណ៌នាសង្ខេបជាភាសាខ្មែរ
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Slide(Base):

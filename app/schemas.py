@@ -63,18 +63,38 @@ class TelegramTestRequest(BaseModel):
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
 
+class AdminUserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    role: str = "user"  # 'admin' or 'user'
+    email_verified: bool = False
+
+class AdminUserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    role: Optional[str] = None  # 'admin' or 'user'
+    email_verified: Optional[bool] = None
+
 class CategoryCreate(BaseModel):
     name: str
+    name_kh: Optional[str] = ""
     description: str = ""
+    description_kh: Optional[str] = ""
 
 class CategoryUpdate(BaseModel):
     name: str
+    name_kh: Optional[str] = ""
     description: str = ""
+    description_kh: Optional[str] = ""
 
 class CategoryOut(BaseModel):
     id: int
     name: str
+    name_kh: Optional[str] = ""
     description: str = ""
+    description_kh: Optional[str] = ""
     product_count: int = 0  # ចំនួនផលិតផលដែលប្រើ Category នេះ
     created_at: Optional[datetime] = None
     class Config:
@@ -101,7 +121,9 @@ class SlideOut(SlideCreate):
 
 class ProductCreate(BaseModel):
     name: str
+    name_kh: Optional[str] = ""
     description: str = ""
+    description_kh: Optional[str] = ""
     price: float
     stock: int
     image_url: str = ""  # រូបមេ
@@ -118,7 +140,9 @@ class ProductUpdate(BaseModel):
     """អនុញ្ញាតកែតម្រូវដោយផ្នែក (partial) — ឧ. កែតម្លៃតែប៉ុណ្ណោះ។
     មានតែ Field ដែលផ្ញើមកប៉ុណ្ណោះនឹងត្រូវបានធ្វើបច្ចុប្បន្នភាព។"""
     name: Optional[str] = None
+    name_kh: Optional[str] = None
     description: Optional[str] = None
+    description_kh: Optional[str] = None
     price: Optional[float] = None
     stock: Optional[int] = None
     image_url: Optional[str] = None

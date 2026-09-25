@@ -17,7 +17,9 @@ def _category_out(db: Session, cat: models.Category) -> dict:
     return {
         "id": cat.id,
         "name": cat.name,
+        "name_kh": getattr(cat, "name_kh", "") or "",
         "description": cat.description or "",
+        "description_kh": getattr(cat, "description_kh", "") or "",
         "product_count": product_count,
         "created_at": cat.created_at,
     }
@@ -53,7 +55,12 @@ def create_category(
             detail=f"Category '{name}' already exists",
         )
 
-    new_cat = models.Category(name=name, description=category.description.strip())
+    new_cat = models.Category(
+        name=name,
+        name_kh=(category.name_kh or "").strip(),
+        description=category.description.strip(),
+        description_kh=(category.description_kh or "").strip(),
+    )
     db.add(new_cat)
     db.commit()
     db.refresh(new_cat)
@@ -92,7 +99,9 @@ def update_category(
 
     old_name = db_cat.name
     db_cat.name = name
+    db_cat.name_kh = (category.name_kh or "").strip()
     db_cat.description = category.description.strip()
+    db_cat.description_kh = (category.description_kh or "").strip()
 
     # បើប្តូរឈ្មោះ Category -> ធ្វើបច្ចុប្បន្នភាពផលិតផលដែលប្រើឈ្មោះចាស់
     if old_name != name:

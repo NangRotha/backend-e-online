@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
-from .. import models, schemas
+from .. import models, schemas, auth
 from ..database import get_db
 from ..deps import get_current_admin
 from ..storage import delete_upload_by_url
@@ -95,6 +95,86 @@ def list_users(db: Session = Depends(_admin)):
         }
         for u in users
     ]
+
+@router.post("/users", response_model=schemas.UserOut)
+def create_user(
+    payload: schemas.AdminUserCreate,
+    db: Session = Depends(_admin),
+):
+    name = payload.name.strip()
+    email = payload.email.strip().lower()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if payload.role not in ("admin", "user"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
+
+    existing = db.query(models.User).filter(func.lower(models.User.email) == email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    new_user = models.User(
+        name=name,
+        email=email,
+        hashed_password=auth.hash_password(payload.password),
+        role=payload.role,
+        email_verified=payload.email_verified,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+@router.put("/users/{user_id}", response_model=schemas.UserOut)
+def update_user(
+    user_id: int,
+    payload: schemas.AdminUserUpdate,
+    db: Session = Depends(_admin),
+    admin: models.User = Depends(get_current_admin),
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        user.name = name
+
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        if not email:
+            raise HTTPException(status_code=400, detail="Email cannot be empty")
+        existing = db.query(models.User).filter(
+            func.lower(models.User.email) == email,
+            models.User.id != user_id,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered by another account")
+        user.email = email
+
+    if payload.role is not None:
+        if payload.role not in ("admin", "user"):
+            raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
+        if user.id == admin.id and payload.role != "admin":
+            raise HTTPException(status_code=400, detail="You cannot change your own role")
+        user.role = payload.role
+
+    if payload.email_verified is not None:
+        user.email_verified = payload.email_verified
+
+    if payload.password and payload.password.strip():
+        if len(payload.password.strip()) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        user.hashed_password = auth.hash_password(payload.password.strip())
+
+    db.commit()
+    db.refresh(user)
+    return user
 
 @router.put("/users/{user_id}/role")
 def update_user_role(
