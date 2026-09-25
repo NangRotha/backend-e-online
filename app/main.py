@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from .database import SessionLocal, init_db
 from .config import settings as app_settings
@@ -454,6 +454,78 @@ def health_check():
         info["debug_db_url"] = EFFECTIVE_DATABASE_URL
 
     return info
+
+
+@app.get("/p/{product_id}", response_class=HTMLResponse)
+def share_product_redirect(product_id: int):
+    """
+    OpenGraph / Social Media Link Preview & redirect for products.
+    Returns rich metadata with real product image for Telegram, Facebook, WhatsApp, etc.
+    """
+    import html
+
+    db = SessionLocal()
+    try:
+        product = db.query(models.Product).filter(models.Product.id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        product_name = product.name_kh or product.name or "ទំនិញ"
+        price_str = f"${float(product.price or 0):.2f}"
+        title = f"{product_name} — {price_str} | Udom Shop"
+        desc = product.description or f"សូមមើលផលិតផល «{product_name}» គុណភាពខ្ពស់ តម្លៃត្រឹមតែ {price_str} នៅ Udom Shop"
+
+        img = ""
+        if product.images and isinstance(product.images, list) and len(product.images) > 0:
+            img = product.images[0]
+        elif product.image_url:
+            img = product.image_url
+
+        if img and img.startswith("/"):
+            img = f"https://backend-e-online.onrender.com{img}"
+
+        canonical_url = f"https://www.udomkh.online/product/{product_id}"
+
+        safe_title = html.escape(title)
+        safe_desc = html.escape(desc)
+        safe_img = html.escape(img or "https://www.udomkh.online/vite.svg")
+        safe_url = html.escape(canonical_url)
+
+        return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8" />
+  <title>{safe_title}</title>
+  <meta name="description" content="{safe_desc}" />
+  <meta property="og:type" content="product" />
+  <meta property="og:site_name" content="Udom Shop" />
+  <meta property="og:url" content="{safe_url}" />
+  <meta property="og:title" content="{safe_title}" />
+  <meta property="og:description" content="{safe_desc}" />
+  <meta property="og:image" content="{safe_img}" />
+  <meta property="og:image:secure_url" content="{safe_img}" />
+  <meta property="og:image:alt" content="{html.escape(product_name)}" />
+  <meta property="og:image:width" content="800" />
+  <meta property="og:image:height" content="800" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="{safe_url}" />
+  <meta name="twitter:title" content="{safe_title}" />
+  <meta name="twitter:description" content="{safe_desc}" />
+  <meta name="twitter:image" content="{safe_img}" />
+  <meta http-equiv="refresh" content="0;url={safe_url}" />
+  <link rel="canonical" href="{safe_url}" />
+</head>
+<body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f8fafc; color: #0f172a;">
+  <div style="text-align: center; padding: 20px;">
+    <h2>{safe_title}</h2>
+    <p>{safe_desc}</p>
+    <a href="{safe_url}" style="display: inline-block; padding: 10px 20px; background: #059669; color: white; border-radius: 8px; text-decoration: none; font-weight: bold;">ចូលមើលទំនិញ</a>
+  </div>
+  <script>window.location.replace("{safe_url}");</script>
+</body>
+</html>""")
+    finally:
+        db.close()
 
 
 # ============================================================
