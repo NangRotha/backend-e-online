@@ -190,6 +190,14 @@ class CheckoutResponse(BaseModel):
     order_id: int
     total_amount: float
     status: str
+    created_at: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
+    shipping_address: Optional[str] = None
+    promo_code: Optional[str] = None
+    note: Optional[str] = None
+    items: Optional[List[Dict]] = None
     payment_method: Optional[str] = "aba_pay"  # 'cod' | 'aba_pay'
     payment_url: str = ""  # Redirect checkout (ABA Pay requestv2 — auto-redirect ទៅ Checkout)
     payment_checkout_url: str = ""  # Frontend Checkout ផ្ទាល់ (checkout.khqr.cc)

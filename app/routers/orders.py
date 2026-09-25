@@ -190,8 +190,29 @@ async def checkout(
     # Telegram Bot: ផ្ញើដំណឹងការកុម្ម៉ង់ថ្មីភ្លាមៗទៅកាន់ Admin Telegram (@DomLumiereOrdersBot)
     background_tasks.add_task(send_order_created_telegram, new_order.id)
 
+    purchased_items_serialized = [
+        {
+            "product_id": p.id,
+            "name": p.name,
+            "name_kh": getattr(p, "name_kh", "") or "",
+            "image_url": (p.images[0] if p.images and len(p.images) > 0 else p.image_url) or "",
+            "quantity": qty,
+            "price": unit_price,
+            "variant": variant or "",
+        }
+        for p, qty, unit_price, variant in purchased
+    ]
+
     return {
         "order_id": new_order.id,
+        "created_at": new_order.created_at.isoformat() if new_order.created_at else None,
+        "customer_name": new_order.customer_name,
+        "customer_phone": new_order.customer_phone,
+        "customer_email": new_order.customer_email,
+        "shipping_address": new_order.shipping_address,
+        "promo_code": new_order.promo_code,
+        "note": new_order.note,
+        "items": purchased_items_serialized,
         "total_amount": total,
         "status": "pending",
         "payment_method": payment_method,
@@ -230,8 +251,29 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
     # ធានាថា URL ជា requestv2 ដែលមិន Session Expired
     valid_url = order.payment_url or order.payment_checkout_url or ""
 
+    order_items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order.id).all()
+    items_list = []
+    for oi in order_items:
+        prod = db.query(models.Product).filter(models.Product.id == oi.product_id).first()
+        img = ""
+        if prod:
+            if prod.images and len(prod.images) > 0:
+                img = prod.images[0]
+            elif prod.image_url:
+                img = prod.image_url
+        items_list.append({
+            "product_id": oi.product_id,
+            "name": prod.name if prod else f"Product #{oi.product_id}",
+            "name_kh": getattr(prod, "name_kh", "") or "",
+            "image_url": img,
+            "quantity": oi.quantity,
+            "price": oi.price,
+            "variant": oi.variant or "",
+        })
+
     return {
         "order_id": order.id,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
         "status": order.status,
         "total_amount": order.total_amount,
         "payment_method": getattr(order, "payment_method", "aba_pay") or "aba_pay",
@@ -251,4 +293,7 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
         "customer_phone": order.customer_phone or "",
         "customer_email": order.customer_email or "",
         "shipping_address": order.shipping_address or "",
+        "promo_code": order.promo_code or "",
+        "note": order.note or "",
+        "items": items_list,
     }
