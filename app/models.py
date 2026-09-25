@@ -27,6 +27,7 @@ class Product(Base):
     images = Column(JSON, default=list)  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
     video_url = Column(String, default="")  # វីដេអូផលិតផល (Admin Upload ពីកុំព្យូទ័រ)
     variants = Column(JSON, default=list)  # បញ្ជីប្រភេទ/ជម្រើសផលិតផល (ឧ. ["Pink", "Black", "White"])
+    sizes = Column(JSON, default=list)  # បញ្ជីទំហំផលិតផល (ឧ. ["S", "M", "L", "XL"] ឬ ["36", "37", "38"])
     category = Column(String)
     is_on_sale = Column(Boolean, default=False)
     sale_percent = Column(Float, default=0)  # ឧទាហរណ៍ 10 = 10% discount

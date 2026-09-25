@@ -130,6 +130,7 @@ class ProductCreate(BaseModel):
     images: Optional[List[str]] = None  # បញ្ជីរូបទាំងអស់ (រូបទី១ = Main)
     video_url: str = ""  # វីដេអូផលិតផល (mp4 / webm / mov — Admin Upload)
     variants: Optional[List[str]] = None  # បញ្ជីប្រភេទ/ជម្រើសផលិតផល (ឧ. ["Pink", "Black", "White"])
+    sizes: Optional[List[str]] = None  # បញ្ជីទំហំផលិតផល (ឧ. ["S", "M", "L", "XL"] ឬ ["36", "37", "38"])
     category: str = ""
     is_on_sale: bool = False
     sale_percent: float = 0
@@ -149,6 +150,7 @@ class ProductUpdate(BaseModel):
     images: Optional[List[str]] = None
     video_url: Optional[str] = None
     variants: Optional[List[str]] = None
+    sizes: Optional[List[str]] = None
     category: Optional[str] = None
     is_on_sale: Optional[bool] = None
     sale_percent: Optional[float] = None
