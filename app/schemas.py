@@ -180,6 +180,9 @@ class CheckoutRequest(BaseModel):
     quantity: Optional[int] = None
     promo_code: Optional[str] = None
     shipping_address: str = ""
+    latitude: Optional[float] = None      # GPS Latitude
+    longitude: Optional[float] = None     # GPS Longitude
+    map_url: Optional[str] = None         # Google Maps Pin URL
     customer_name: Optional[str] = None   # ឈ្មោះអ្នកទទួល (auto ពី Profile ឬបំពេញដោយខ្លួនឯង)
     customer_phone: Optional[str] = None  # លេខទូរសព្ទ
     customer_email: Optional[str] = None  # អ៊ីមែល (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
@@ -204,6 +207,9 @@ class CheckoutResponse(BaseModel):
     customer_phone: Optional[str] = None
     customer_email: Optional[str] = None
     shipping_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    map_url: Optional[str] = None
     promo_code: Optional[str] = None
     note: Optional[str] = None
     items: Optional[List[OrderItemDetail]] = None

@@ -307,7 +307,13 @@ def send_order_created_telegram(order_id: int):
             email_section = f"✉️ <b>អ៊ីមែល / Email:</b> {order.customer_email.strip()}\n"
 
         phone_clean = (order.customer_phone or "").strip()
-        phone_display = f"<code>{phone_clean}</code>" if phone_clean else "<i>(មិនមាន)</i>"
+        location_pin_section = ""
+        map_pin_url = (getattr(order, "map_url", None) or "").strip()
+        if not map_pin_url and getattr(order, "latitude", None) and getattr(order, "longitude", None):
+            map_pin_url = f"https://www.google.com/maps?q={order.latitude},{order.longitude}"
+
+        if map_pin_url:
+            location_pin_section = f"🗺️ <b>ទីតាំង Google Maps:</b> <a href=\"{map_pin_url}\">បើកមើលផែនទី (Google Maps Pin)</a>\n"
 
         msg = (
             f"🛍 <b>ការកុម្ម៉ង់ទិញថ្មី / NEW ORDER #{order.id}</b>\n"
@@ -316,6 +322,7 @@ def send_order_created_telegram(order_id: int):
             f"📞 <b>លេខទូរស័ព្ទ:</b> {phone_display}\n"
             f"{email_section}"
             f"📍 <b>អាសយដ្ឋានដឹក:</b> {shipping_display}\n"
+            f"{location_pin_section}"
             f"💳 <b>វិធីទូទាត់:</b> {payment_badge}\n"
             f"\n"
             f"📦 <b>ទំនិញដែលបានទិញ:</b>\n"
@@ -327,11 +334,11 @@ def send_order_created_telegram(order_id: int):
         )
 
         admin_url = getattr(settings, "ADMIN_FRONTEND_URL", "https://frontend-admin-e-online.vercel.app")
-        keyboard = [
-            [
-                {"text": "🛒 ចូលមើល Order ក្នុង Admin", "url": f"{admin_url}/orders"},
-            ]
-        ]
+        keyboard_buttons = []
+        if map_pin_url:
+            keyboard_buttons.append({"text": "📍 បើកមើលផែនទី Google Maps", "url": map_pin_url})
+        keyboard_buttons.append({"text": "🛒 ចូលមើល Order ក្នុង Admin", "url": f"{admin_url}/orders"})
+        keyboard = [keyboard_buttons]
 
         send_telegram_message(text=msg, inline_keyboard=keyboard, db=db)
     except Exception as exc:

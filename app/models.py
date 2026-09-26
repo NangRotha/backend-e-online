@@ -74,6 +74,9 @@ class Order(Base):
     customer_phone = Column(String, nullable=True)  # លេខទូរសព្ទ
     customer_email = Column(String, default="")     # អ៊ីមែលអតិថិជន (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
     shipping_address = Column(String, default="")   # អាសយដ្ឋានដឹកជញ្ជូន
+    latitude = Column(Float, nullable=True)         # GPS Latitude (សម្រាប់ Pin ទីតាំងលើ Google Maps)
+    longitude = Column(Float, nullable=True)        # GPS Longitude (សម្រាប់ Pin ទីតាំងលើ Google Maps)
+    map_url = Column(String, default="")           # តំណ Google Maps Pin សម្រាប់ Admin/អ្នកដឹកជញ្ជូន
     payment_method = Column(String, default="aba_pay")  # 'cod' (Cash on Delivery) | 'aba_pay' (ABA KHQR)
     note = Column(String, default="")               # កំណត់ចំណាំ (optional)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
