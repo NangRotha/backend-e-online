@@ -1,3 +1,4 @@
+import html
 import hashlib
 import hmac
 import logging
@@ -157,7 +158,13 @@ def send_telegram_message(
             resp = client.post(url, json=payload)
             data = resp.json()
             if not data.get("ok"):
-                logger.error(f"Telegram API error: {data.get('description')}")
+                desc = str(data.get("description", ""))
+                logger.error(f"Telegram API error: {desc}")
+                # Fallback to plain text if HTML entity parsing fails
+                if "parse entities" in desc.lower() or "can't parse" in desc.lower():
+                    payload.pop("parse_mode", None)
+                    resp2 = client.post(url, json=payload)
+                    return bool(resp2.json().get("ok"))
                 return False
             return True
     except Exception as exc:
@@ -285,12 +292,15 @@ def send_order_created_telegram(order_id: int):
         else:
             shipping_display = raw_address or "ភ្នំពេញ"
 
+        cust_name = html.escape(order.customer_name or "Customer")
+        shipping_clean = html.escape(shipping_display)
+
         # បញ្ជីទំនិញ
         item_lines = []
         for it in order_items:
             prod = products_map.get(it.product_id)
-            pname = prod.name if prod else f"Product #{it.product_id}"
-            variant_str = f" ({it.variant})" if it.variant else ""
+            pname = html.escape(prod.name if prod else f"Product #{it.product_id}")
+            variant_str = f" ({html.escape(it.variant)})" if it.variant else ""
             line_total = it.price * it.quantity
             item_lines.append(f"• <b>{pname}</b>{variant_str} × {it.quantity} = ${line_total:.2f}")
 
@@ -300,13 +310,15 @@ def send_order_created_telegram(order_id: int):
 
         note_section = ""
         if order.note and order.note.strip():
-            note_section = f"📝 <b>ចំណាំ / Note:</b> <i>{order.note.strip()}</i>\n"
+            note_section = f"📝 <b>ចំណាំ / Note:</b> <i>{html.escape(order.note.strip())}</i>\n"
 
         email_section = ""
         if order.customer_email and order.customer_email.strip():
-            email_section = f"✉️ <b>អ៊ីមែល / Email:</b> {order.customer_email.strip()}\n"
+            email_section = f"✉️ <b>អ៊ីមែល / Email:</b> {html.escape(order.customer_email.strip())}\n"
 
         phone_clean = (order.customer_phone or "").strip()
+        phone_display = f"<code>{html.escape(phone_clean)}</code>" if phone_clean else "N/A"
+
         location_pin_section = ""
         map_pin_url = (getattr(order, "map_url", None) or "").strip()
         if not map_pin_url and getattr(order, "latitude", None) and getattr(order, "longitude", None):
@@ -318,10 +330,10 @@ def send_order_created_telegram(order_id: int):
         msg = (
             f"🛍 <b>ការកុម្ម៉ង់ទិញថ្មី / NEW ORDER #{order.id}</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>អតិថិជន:</b> {order.customer_name or 'Customer'}\n"
+            f"👤 <b>អតិថិជន:</b> {cust_name}\n"
             f"📞 <b>លេខទូរស័ព្ទ:</b> {phone_display}\n"
             f"{email_section}"
-            f"📍 <b>អាសយដ្ឋានដឹក:</b> {shipping_display}\n"
+            f"📍 <b>អាសយដ្ឋានដឹក:</b> {shipping_clean}\n"
             f"{location_pin_section}"
             f"💳 <b>វិធីទូទាត់:</b> {payment_badge}\n"
             f"\n"
