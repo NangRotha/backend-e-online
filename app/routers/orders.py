@@ -91,6 +91,21 @@ async def checkout(
 
     total = round(total, 2)
 
+    # គណនាថ្លៃដឹកជញ្ជូន និងកំណត់ក្រុមហ៊ុនដឹកជញ្ជូន
+    shipping_company_name = ""
+    shipping_fee = 0.0
+    if getattr(order, "shipping_company_id", None):
+        comp = db.query(models.ShippingCompany).filter(models.ShippingCompany.id == order.shipping_company_id).first()
+        if comp:
+            shipping_company_name = f"{comp.name_kh} ({comp.name})" if comp.name_kh else comp.name
+            shipping_fee = float(comp.fee or 0.0)
+    elif getattr(order, "shipping_company", None):
+        shipping_company_name = order.shipping_company.strip()
+        shipping_fee = float(getattr(order, "shipping_fee", 0.0) or 0.0)
+
+    # បូកថ្លៃដឹកជញ្ជូនចូលទៅក្នុង Total ចុងក្រោយ
+    total = round(total + shipping_fee, 2)
+
     # បង្កើត Order ក្នុង Database
     # (Guest: user_id = None — Order ភ្ជាប់តាមលេខទូរសព្ទ/អ៊ីមែលជំនួសវិញ)
     customer_email = (order.customer_email or "").strip()
@@ -130,6 +145,8 @@ async def checkout(
         customer_phone=(order.customer_phone or "").strip(),
         customer_email=customer_email,
         shipping_address=shipping_addr,
+        shipping_company=shipping_company_name,
+        shipping_fee=shipping_fee,
         latitude=order.latitude,
         longitude=order.longitude,
         map_url=(order.map_url or "").strip(),
@@ -213,6 +230,8 @@ async def checkout(
         "customer_phone": new_order.customer_phone,
         "customer_email": new_order.customer_email,
         "shipping_address": new_order.shipping_address,
+        "shipping_company": new_order.shipping_company,
+        "shipping_fee": new_order.shipping_fee,
         "latitude": new_order.latitude,
         "longitude": new_order.longitude,
         "map_url": new_order.map_url,
@@ -299,6 +318,8 @@ def order_status(order_id: int, db: Session = Depends(get_db)):
         "customer_phone": order.customer_phone or "",
         "customer_email": order.customer_email or "",
         "shipping_address": order.shipping_address or "",
+        "shipping_company": getattr(order, "shipping_company", "") or "",
+        "shipping_fee": getattr(order, "shipping_fee", 0.0) or 0.0,
         "latitude": getattr(order, "latitude", None),
         "longitude": getattr(order, "longitude", None),
         "map_url": getattr(order, "map_url", "") or "",

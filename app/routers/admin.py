@@ -265,6 +265,8 @@ def list_orders(db: Session = Depends(_admin)):
             "customer_name": o.customer_name,
             "customer_phone": o.customer_phone,
             "shipping_address": o.shipping_address,
+            "shipping_company": getattr(o, "shipping_company", "") or "",
+            "shipping_fee": getattr(o, "shipping_fee", 0.0) or 0.0,
             "latitude": getattr(o, "latitude", None),
             "longitude": getattr(o, "longitude", None),
             "map_url": getattr(o, "map_url", "") or "",

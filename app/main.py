@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .database import SessionLocal, init_db
 from .config import settings as app_settings
 from . import models
-from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts, payments
+from .routers import auth, products, orders, discounts, settings, admin, ws, categories, slides, users, chat, alerts, payments, shipping
 from .storage import ensure_upload_dir
 from .email_sender import email_status
 
@@ -406,6 +406,7 @@ app.include_router(users.router)
 app.include_router(chat.router)
 app.include_router(alerts.router)
 app.include_router(payments.router)
+app.include_router(shipping.router)
 
 @app.get("/")
 def read_root():

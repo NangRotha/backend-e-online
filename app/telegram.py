@@ -327,6 +327,12 @@ def send_order_created_telegram(order_id: int):
         if map_pin_url:
             location_pin_section = f"🗺️ <b>ទីតាំង Google Maps:</b> <a href=\"{map_pin_url}\">បើកមើលផែនទី (Google Maps Pin)</a>\n"
 
+        shipping_comp_name = (getattr(order, "shipping_company", "") or "").strip()
+        shipping_fee_val = float(getattr(order, "shipping_fee", 0.0) or 0.0)
+        shipping_comp_section = ""
+        if shipping_comp_name:
+            shipping_comp_section = f"🚚 <b>ក្រុមហ៊ុនដឹកជញ្ជូន:</b> {html.escape(shipping_comp_name)} (${shipping_fee_val:.2f})\n"
+
         msg = (
             f"🛍 <b>ការកុម្ម៉ង់ទិញថ្មី / NEW ORDER #{order.id}</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
@@ -335,6 +341,7 @@ def send_order_created_telegram(order_id: int):
             f"{email_section}"
             f"📍 <b>អាសយដ្ឋានដឹក:</b> {shipping_clean}\n"
             f"{location_pin_section}"
+            f"{shipping_comp_section}"
             f"💳 <b>វិធីទូទាត់:</b> {payment_badge}\n"
             f"\n"
             f"📦 <b>ទំនិញដែលបានទិញ:</b>\n"

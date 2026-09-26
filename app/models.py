@@ -74,11 +74,25 @@ class Order(Base):
     customer_phone = Column(String, nullable=True)  # លេខទូរសព្ទ
     customer_email = Column(String, default="")     # អ៊ីមែលអតិថិជន (Guest Checkout — សម្រាប់ផ្ញើ Receipt)
     shipping_address = Column(String, default="")   # អាសយដ្ឋានដឹកជញ្ជូន
+    shipping_company = Column(String, default="")   # ក្រុមហ៊ុនដឹកជញ្ជូន (ឧ. វីរៈ ប៊ុនថាំ (VET Express))
+    shipping_fee = Column(Float, default=0.0)       # ថ្លៃដឹកជញ្ជូន ($)
     latitude = Column(Float, nullable=True)         # GPS Latitude (សម្រាប់ Pin ទីតាំងលើ Google Maps)
     longitude = Column(Float, nullable=True)        # GPS Longitude (សម្រាប់ Pin ទីតាំងលើ Google Maps)
     map_url = Column(String, default="")           # តំណ Google Maps Pin សម្រាប់ Admin/អ្នកដឹកជញ្ជូន
     payment_method = Column(String, default="aba_pay")  # 'cod' (Cash on Delivery) | 'aba_pay' (ABA KHQR)
     note = Column(String, default="")               # កំណត់ចំណាំ (optional)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ShippingCompany(Base):
+    """ក្រុមហ៊ុនដឹកជញ្ជូន (Courier / Delivery Company) សម្រាប់ Checkout និងគ្រប់គ្រងពី Admin Panel"""
+    __tablename__ = "shipping_companies"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)              # ឈ្មោះជាអក្សរឡាតាំង ឧ. VET Express
+    name_kh = Column(String, default="")              # ឈ្មោះជាភាសាខ្មែរ ឧ. វីរៈ ប៊ុនថាំ
+    fee = Column(Float, default=1.50)                 # ថ្លៃដឹកជញ្ជូន ($)
+    estimated_delivery = Column(String, default="1-2 ថ្ងៃ")  # រយៈពេលដឹកជញ្ជូន (ឧ. 1-2 ថ្ងៃ)
+    sort_order = Column(Integer, default=0)           # លំដាប់បង្ហាញ (តូច = មុនគេ)
+    is_active = Column(Boolean, default=True)         # បង្ហាញលើ Storefront ឬអត់
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class OrderItem(Base):

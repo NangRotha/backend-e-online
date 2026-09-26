@@ -169,6 +169,31 @@ class BulkPriceAdjustRequest(BaseModel):
     category: Optional[str] = None  # None or "All" for all products
     set_original_price: bool = True  # Preserve existing price in original_price
 
+class ShippingCompanyBase(BaseModel):
+    name: str
+    name_kh: Optional[str] = ""
+    fee: float = 1.50
+    estimated_delivery: Optional[str] = "1-2 ថ្ងៃ"
+    sort_order: Optional[int] = 0
+    is_active: Optional[bool] = True
+
+class ShippingCompanyCreate(ShippingCompanyBase):
+    pass
+
+class ShippingCompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    name_kh: Optional[str] = None
+    fee: Optional[float] = None
+    estimated_delivery: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class ShippingCompanyOut(ShippingCompanyBase):
+    id: int
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
 class CheckoutItem(BaseModel):
     product_id: int
     quantity: int
@@ -180,6 +205,9 @@ class CheckoutRequest(BaseModel):
     quantity: Optional[int] = None
     promo_code: Optional[str] = None
     shipping_address: str = ""
+    shipping_company: Optional[str] = None    # ឈ្មោះក្រុមហ៊ុនដឹកជញ្ជូន ឧ. វីរៈ ប៊ុនថាំ (VET Express)
+    shipping_company_id: Optional[int] = None # ID ក្រុមហ៊ុនដឹកជញ្ជូន
+    shipping_fee: Optional[float] = None       # ថ្លៃដឹកជញ្ជូន ($)
     latitude: Optional[float] = None      # GPS Latitude
     longitude: Optional[float] = None     # GPS Longitude
     map_url: Optional[str] = None         # Google Maps Pin URL
@@ -207,6 +235,8 @@ class CheckoutResponse(BaseModel):
     customer_phone: Optional[str] = None
     customer_email: Optional[str] = None
     shipping_address: Optional[str] = None
+    shipping_company: Optional[str] = None
+    shipping_fee: Optional[float] = 0.0
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     map_url: Optional[str] = None
