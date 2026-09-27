@@ -4,7 +4,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
-from ..ws_manager import broadcast_orders_changed
+from ..ws_manager import broadcast_orders_changed, manager
 
 router = APIRouter(prefix="/api", tags=["Shipping"])
 
@@ -239,3 +239,74 @@ def reset_default_shipping_companies(
         .order_by(models.ShippingCompany.sort_order.asc(), models.ShippingCompany.id.asc())
         .all()
     )
+
+
+# ============================================================
+# Phnom Penh Delivery Config (Helper & CRUD)
+# ============================================================
+def get_phnom_penh_shipping_config(db: Session) -> schemas.PhnomPenhShippingConfig:
+    """អានការកំណត់ថ្លៃដឹកជញ្ជូនរាជធានីភ្នំពេញពី SiteSetting (Default: $1.00 ឬ Free បើកំណត់)"""
+    rows = {s.key: s.value for s in db.query(models.SiteSetting).all()}
+    is_free = rows.get("phnom_penh_shipping_is_free", "false").lower() in ("true", "1", "yes")
+    fee_raw = rows.get("phnom_penh_shipping_fee")
+    try:
+        fee = max(0.0, round(float(fee_raw), 2)) if fee_raw is not None else 1.0
+    except (ValueError, TypeError):
+        fee = 1.0
+    if is_free:
+        fee = 0.0
+    estimated = rows.get("phnom_penh_shipping_estimated") or "1-2 ថ្ងៃ"
+    name = rows.get("phnom_penh_shipping_name") or "ដឹកជញ្ជូនភ្នំពេញ (COD)"
+    return schemas.PhnomPenhShippingConfig(
+        fee=fee,
+        is_free=is_free,
+        estimated_delivery=estimated,
+        name=name,
+    )
+
+
+@router.get("/shipping/phnom-penh", response_model=schemas.PhnomPenhShippingConfig)
+def get_phnom_penh_shipping(db: Session = Depends(get_db)):
+    """ទាញយកការកំណត់ថ្លៃដឹកជញ្ជូនសម្រាប់រាជធានីភ្នំពេញ (សម្រាប់ទំព័រ Checkout និង Storefront)"""
+    return get_phnom_penh_shipping_config(db)
+
+
+@router.put("/admin/shipping/phnom-penh", response_model=schemas.PhnomPenhShippingConfig)
+def update_phnom_penh_shipping(
+    data: schemas.PhnomPenhShippingUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(get_current_admin),
+):
+    """Admin: កំណត់ ឬកែប្រែថ្លៃដឹកជញ្ជូនរាជធានីភ្នំពេញ (អាច Free ឬកំណត់ថ្លៃណាមួយ)"""
+    def _set_setting(key: str, value: str):
+        s = db.query(models.SiteSetting).filter(models.SiteSetting.key == key).first()
+        if s:
+            s.value = value
+        else:
+            db.add(models.SiteSetting(key=key, value=value))
+
+    if data.is_free is not None:
+        _set_setting("phnom_penh_shipping_is_free", "true" if data.is_free else "false")
+
+    if data.fee is not None:
+        fee_val = max(0.0, round(float(data.fee), 2))
+        _set_setting("phnom_penh_shipping_fee", str(fee_val))
+        if fee_val == 0.0 and data.is_free is None:
+            _set_setting("phnom_penh_shipping_is_free", "true")
+
+    if data.estimated_delivery is not None:
+        _set_setting("phnom_penh_shipping_estimated", data.estimated_delivery.strip())
+
+    if data.name is not None:
+        _set_setting("phnom_penh_shipping_name", data.name.strip())
+
+    db.commit()
+
+    background_tasks.add_task(
+        manager.broadcast,
+        {"type": "settings_changed", "message": "Phnom Penh shipping setting updated"},
+    )
+    background_tasks.add_task(broadcast_orders_changed)
+    return get_phnom_penh_shipping_config(db)
+

@@ -91,32 +91,6 @@ async def checkout(
 
     total = round(total, 2)
 
-    # គណនាថ្លៃដឹកជញ្ជូន និងកំណត់ក្រុមហ៊ុនដឹកជញ្ជូន
-    shipping_company_name = ""
-    shipping_fee = 0.0
-    if getattr(order, "shipping_company_id", None):
-        comp = db.query(models.ShippingCompany).filter(models.ShippingCompany.id == order.shipping_company_id).first()
-        if comp:
-            shipping_company_name = f"{comp.name_kh} ({comp.name})" if comp.name_kh else comp.name
-            shipping_fee = float(comp.fee or 0.0)
-    elif getattr(order, "shipping_company", None):
-        shipping_company_name = order.shipping_company.strip()
-        shipping_fee = float(getattr(order, "shipping_fee", 0.0) or 0.0)
-
-    # បូកថ្លៃដឹកជញ្ជូនចូលទៅក្នុង Total ចុងក្រោយ
-    total = round(total + shipping_fee, 2)
-
-    # បង្កើត Order ក្នុង Database
-    # (Guest: user_id = None — Order ភ្ជាប់តាមលេខទូរសព្ទ/អ៊ីមែលជំនួសវិញ)
-    customer_email = (order.customer_email or "").strip()
-    profile_name = ""
-    user_id = None
-    if isinstance(current_user, models.User):
-        user_id = current_user.id
-        profile_name = current_user.name or ""
-        if not customer_email:
-            customer_email = current_user.email or ""
-
     shipping_addr = (order.shipping_address or "").strip()
     # ពិនិត្យថាអតិថិជនកុម្ម៉ង់នៅភ្នំពេញ (Cash on Delivery) ឬតាមបណ្តាខេត្ត (ABA Pay KHQR)
     pp_keywords = [
@@ -134,6 +108,51 @@ async def checkout(
         or any(k in addr_lower for k in pp_keywords)
     )
     payment_method = "cod" if is_phnom_penh else "aba_pay"
+
+    # គណនាថ្លៃដឹកជញ្ជូន និងកំណត់ក្រុមហ៊ុនដឹកជញ្ជូន
+    shipping_company_name = ""
+    shipping_fee = 0.0
+    if is_phnom_penh:
+        # Phnom Penh Delivery: Check SiteSetting
+        settings_map = {s.key: s.value for s in db.query(models.SiteSetting).all()}
+        is_pp_free = settings_map.get("phnom_penh_shipping_is_free", "false").lower() in ("true", "1", "yes")
+        pp_fee_val = settings_map.get("phnom_penh_shipping_fee")
+        if is_pp_free:
+            shipping_fee = 0.0
+        elif pp_fee_val is not None:
+            try:
+                shipping_fee = max(0.0, round(float(pp_fee_val), 2))
+            except (ValueError, TypeError):
+                shipping_fee = float(getattr(order, "shipping_fee", 0.0) or 1.0)
+        else:
+            shipping_fee = float(getattr(order, "shipping_fee", 0.0) or 1.0)
+
+        pp_name = settings_map.get("phnom_penh_shipping_name") or "ដឹកជញ្ជូនភ្នំពេញ (COD)"
+        shipping_company_name = (order.shipping_company or "").strip() or pp_name
+    else:
+        # Province Delivery: Courier company selection
+        if getattr(order, "shipping_company_id", None):
+            comp = db.query(models.ShippingCompany).filter(models.ShippingCompany.id == order.shipping_company_id).first()
+            if comp:
+                shipping_company_name = f"{comp.name_kh} ({comp.name})" if comp.name_kh else comp.name
+                shipping_fee = float(comp.fee or 0.0)
+        elif getattr(order, "shipping_company", None):
+            shipping_company_name = order.shipping_company.strip()
+            shipping_fee = float(getattr(order, "shipping_fee", 0.0) or 0.0)
+
+    # បូកថ្លៃដឹកជញ្ជូនចូលទៅក្នុង Total ចុងក្រោយ
+    total = round(total + shipping_fee, 2)
+
+    # បង្កើត Order ក្នុង Database
+    # (Guest: user_id = None — Order ភ្ជាប់តាមលេខទូរសព្ទ/អ៊ីមែលជំនួសវិញ)
+    customer_email = (order.customer_email or "").strip()
+    profile_name = ""
+    user_id = None
+    if isinstance(current_user, models.User):
+        user_id = current_user.id
+        profile_name = current_user.name or ""
+        if not customer_email:
+            customer_email = current_user.email or ""
 
     new_order = models.Order(
         user_id=user_id,

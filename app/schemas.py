@@ -194,6 +194,18 @@ class ShippingCompanyOut(ShippingCompanyBase):
     class Config:
         from_attributes = True
 
+class PhnomPenhShippingConfig(BaseModel):
+    fee: float = 1.0
+    is_free: bool = False
+    estimated_delivery: str = "1-2 ថ្ងៃ"
+    name: str = "ដឹកជញ្ជូនភ្នំពេញ (COD)"
+
+class PhnomPenhShippingUpdate(BaseModel):
+    fee: Optional[float] = None
+    is_free: Optional[bool] = None
+    estimated_delivery: Optional[str] = None
+    name: Optional[str] = None
+
 class CheckoutItem(BaseModel):
     product_id: int
     quantity: int

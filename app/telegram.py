@@ -331,7 +331,8 @@ def send_order_created_telegram(order_id: int):
         shipping_fee_val = float(getattr(order, "shipping_fee", 0.0) or 0.0)
         shipping_comp_section = ""
         if shipping_comp_name:
-            shipping_comp_section = f"🚚 <b>ក្រុមហ៊ុនដឹកជញ្ជូន:</b> {html.escape(shipping_comp_name)} (${shipping_fee_val:.2f})\n"
+            fee_label = "Free (ឥតគិតថ្លៃ)" if shipping_fee_val <= 0 else f"${shipping_fee_val:.2f}"
+            shipping_comp_section = f"🚚 <b>សេវាដឹកជញ្ជូន:</b> {html.escape(shipping_comp_name)} ({fee_label})\n"
 
         msg = (
             f"🛍 <b>ការកុម្ម៉ង់ទិញថ្មី / NEW ORDER #{order.id}</b>\n"
