@@ -185,6 +185,10 @@ def _init_db_once() -> list:
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         changes = _migrate(conn)
+        try:
+            conn.execute(text('UPDATE "products" SET "is_active" = 1 WHERE "is_active" IS NULL'))
+        except Exception:
+            pass
         conn.commit()
     return changes
 

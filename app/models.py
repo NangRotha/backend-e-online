@@ -33,6 +33,7 @@ class Product(Base):
     sale_percent = Column(Float, default=0)  # ឧទាហរណ៍ 10 = 10% discount
     original_price = Column(Float, nullable=True, default=None)  # តម្លៃដើម/ចាស់ (Strikethrough price ឧ. $25)
     rating = Column(Float, default=5.0)  # ពិន្ទុផ្កាយផលិតផល (1.0 ដល់ 5.0)
+    is_active = Column(Boolean, default=True)  # បង្ហាញលើ Storefront ឬអត់ (True = បើក/បង្ហាញ, False = លាក់/បិទ)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Category(Base):

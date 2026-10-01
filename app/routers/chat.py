@@ -132,7 +132,7 @@ def execute_tool(name: str, args: dict) -> Any:
             return {
                 "site_name": site.get("site_name", ""),
                 "site_logo": site.get("site_logo", ""),
-                "product_count": db.query(models.Product).count(),
+                "product_count": db.query(models.Product).filter(models.Product.is_active == True).count(),
                 "category_count": db.query(models.Category).count(),
             }
 
@@ -140,24 +140,30 @@ def execute_tool(name: str, args: dict) -> Any:
             result = []
             for c in db.query(models.Category).order_by(models.Category.name.asc()).all():
                 cnt = db.query(func.count(models.Product.id)).filter(
-                    models.Product.category == c.name
+                    models.Product.category == c.name,
+                    models.Product.is_active == True,
                 ).scalar()
                 result.append({"name": c.name, "product_count": cnt})
             # បន្ថែម Category ដែលមានក្នុងផលិតផល តែមិនទាន់មានក្នុងតារាង categories
             existing = {r["name"] for r in result}
-            for (cat,) in db.query(models.Product.category).distinct().all():
+            for (cat,) in db.query(models.Product.category).filter(models.Product.is_active == True).distinct().all():
                 if cat and cat not in existing:
                     cnt = db.query(func.count(models.Product.id)).filter(
-                        models.Product.category == cat
+                        models.Product.category == cat,
+                        models.Product.is_active == True,
                     ).scalar()
                     result.append({"name": cat, "product_count": cnt})
             return result
 
         if name == "list_products":
             limit = max(1, min(int(args.get("limit", 10)), 20))
-            prods = db.query(models.Product).order_by(
-                models.Product.created_at.desc()
-            ).limit(limit).all()
+            prods = (
+                db.query(models.Product)
+                .filter(models.Product.is_active == True)
+                .order_by(models.Product.created_at.desc())
+                .limit(limit)
+                .all()
+            )
             return [_product_dict(p) for p in prods]
 
         if name == "search_products":
@@ -168,11 +174,12 @@ def execute_tool(name: str, args: dict) -> Any:
             prods = (
                 db.query(models.Product)
                 .filter(
+                    models.Product.is_active == True,
                     or_(
                         models.Product.name.ilike(like),
                         models.Product.description.ilike(like),
                         models.Product.category.ilike(like),
-                    )
+                    ),
                 )
                 .limit(10)
                 .all()
@@ -184,7 +191,8 @@ def execute_tool(name: str, args: dict) -> Any:
             if not q:
                 return {"error": "no product name provided"}
             p = db.query(models.Product).filter(
-                models.Product.name.ilike(f"%{q}%")
+                models.Product.is_active == True,
+                models.Product.name.ilike(f"%{q}%"),
             ).first()
             if not p:
                 return {"error": f"product '{q}' not found in the store"}
@@ -193,7 +201,8 @@ def execute_tool(name: str, args: dict) -> Any:
         if name == "check_stock":
             q = (args.get("name") or "").strip()
             p = db.query(models.Product).filter(
-                models.Product.name.ilike(f"%{q}%")
+                models.Product.is_active == True,
+                models.Product.name.ilike(f"%{q}%"),
             ).first()
             if not p:
                 return {"error": f"product '{q}' not found", "in_stock": False}

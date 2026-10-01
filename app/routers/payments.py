@@ -125,6 +125,19 @@ def _encode_items(items: Optional[List[Dict]]) -> str:
         return ""
 
 
+def _fmt_amount(amount: float) -> str:
+    """បម្លែងចំនួនទឹកប្រាក់ទៅជាខ្សែអក្សរ PHP-style (12.50 -> '12.5', 12.00 -> '12')"""
+    return f"{amount:.2f}".rstrip("0").rstrip(".")
+
+
+def _sha1(*parts) -> str:
+    return hashlib.sha1("".join(str(p) for p in parts).encode()).hexdigest()
+
+
+def _sha256(*parts) -> str:
+    return hashlib.sha256("".join(str(p) for p in parts).encode()).hexdigest()
+
+
 def _payment_params(
     secret_key: str,
     transaction_id: str,
@@ -214,20 +227,6 @@ def _encode_custom_fields(data: Optional[Dict]) -> str:
         return base64.b64encode(raw.encode()).decode()
     except Exception:  # noqa: BLE001
         return ""
-
-
-
-def _fmt_amount(amount: float) -> str:
-    """បម្លែងចំនួនទឹកប្រាក់ទៅជាខ្សែអក្សរ PHP-style (12.50 -> '12.5', 12.00 -> '12')"""
-    return f"{amount:.2f}".rstrip("0").rstrip(".")
-
-
-def _sha1(*parts) -> str:
-    return hashlib.sha1("".join(str(p) for p in parts).encode()).hexdigest()
-
-
-def _sha256(*parts) -> str:
-    return hashlib.sha256("".join(str(p) for p in parts).encode()).hexdigest()
 
 
 def _qr_api_url(profile_id: str) -> str:

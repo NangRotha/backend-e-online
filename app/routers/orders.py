@@ -69,8 +69,9 @@ async def checkout(
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
         product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
-        if not product:
-            raise HTTPException(status_code=400, detail=f"Product {item.product_id} not found")
+        if not product or not getattr(product, "is_active", True):
+            prod_name = product.name if product else f"#{item.product_id}"
+            raise HTTPException(status_code=400, detail=f"Product '{prod_name}' is not available")
         if product.stock < item.quantity:
             raise HTTPException(status_code=400, detail=f"Product '{product.name}' out of stock")
         unit_price = _effective_price(product)

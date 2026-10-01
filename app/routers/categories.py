@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api", tags=["Categories"])
 def _category_out(db: Session, cat: models.Category) -> dict:
     """បង្កើត response រួមជាមួយចំនួនផលិតផលដែលប្រើ Category នេះ"""
     product_count = db.query(func.count(models.Product.id)).filter(
-        models.Product.category == cat.name
+        models.Product.category == cat.name,
+        models.Product.is_active == True,
     ).scalar()
     return {
         "id": cat.id,

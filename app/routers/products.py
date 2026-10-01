@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pathlib import Path
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_admin
+from ..deps import get_current_admin, get_current_user_optional
 from ..storage import (
     ALLOWED_EXTENSIONS,
     ALLOWED_VIDEO_EXTENSIONS,
@@ -51,17 +51,57 @@ async def upload_image(
     content = await file.read()
     return save_upload(content, filename, folder="products")
 
-# បង្ហាញផលិតផលទាំងអស់ (សម្រាប់ User)
+# បង្ហាញផលិតផលសកម្មទាំងអស់ (សម្រាប់ User / Storefront)
+# ឬផលិតផលទាំងអស់ (បើ Admin ភ្ជាប់ Token + all=True)
 @router.get("/products", response_model=List[schemas.ProductOut])
-def get_products(db: Session = Depends(get_db)):
-    return db.query(models.Product).all()
+def get_products(
+    all: bool = False,
+    db: Session = Depends(get_db),
+    user: Optional[models.User] = Depends(get_current_user_optional),
+):
+    query = db.query(models.Product)
+    if not (all and user and user.role == "admin"):
+        query = query.filter(models.Product.is_active == True)
+    return query.order_by(models.Product.id.desc()).all()
 
-# បង្ហាញផលិតផលមួយ (សម្រាប់ Share)
+# Admin: បង្ហាញផលិតផលទាំងអស់ (រួមទាំងផលិតផលដែលបានលាក់/បិទ)
+@router.get("/admin/products", response_model=List[schemas.ProductOut])
+def get_admin_products(
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(get_current_admin),
+):
+    return db.query(models.Product).order_by(models.Product.id.desc()).all()
+
+# បង្ហាញផលិតផលមួយ (សម្រាប់ Storefront / Share)
 @router.get("/products/{product_id}", response_model=schemas.ProductOut)
-def get_product(product_id: int, db: Session = Depends(get_db)):
+def get_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[models.User] = Depends(get_current_user_optional),
+):
     product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+    is_admin = bool(user and user.role == "admin")
+    if not product.is_active and not is_admin:
+        raise HTTPException(status_code=404, detail="Product is not available")
+    return product
+
+# Admin: បិទ/បើក (Hide/Show) ផលិតផលលើ Storefront
+@router.put("/admin/products/{product_id}/toggle", response_model=schemas.ProductOut)
+def toggle_product_visibility(
+    product_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(get_current_admin),
+):
+    product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.is_active = not bool(product.is_active)
+    db.commit()
+    db.refresh(product)
+    background_tasks.add_task(broadcast_products_changed)
     return product
 
 # Admin: បង្កើតផលិតផលថ្មី
@@ -73,6 +113,8 @@ def create_product(
     admin: models.User = Depends(get_current_admin),
 ):
     data = _normalize_images(product.dict())
+    if data.get("is_active") is None:
+        data["is_active"] = True
     new_product = models.Product(**data)
     db.add(new_product)
     db.commit()

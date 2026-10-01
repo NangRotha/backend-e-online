@@ -136,6 +136,7 @@ class ProductCreate(BaseModel):
     sale_percent: float = 0
     original_price: Optional[float] = None
     rating: Optional[float] = 5.0
+    is_active: Optional[bool] = True
 
 class ProductUpdate(BaseModel):
     """អនុញ្ញាតកែតម្រូវដោយផ្នែក (partial) — ឧ. កែតម្លៃតែប៉ុណ្ណោះ។
@@ -156,9 +157,12 @@ class ProductUpdate(BaseModel):
     sale_percent: Optional[float] = None
     original_price: Optional[float] = None
     rating: Optional[float] = None
+    is_active: Optional[bool] = None
 
 class ProductOut(ProductCreate):
     id: int
+    is_active: bool = True
+    created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 

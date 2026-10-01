@@ -236,7 +236,7 @@ _CORS_ORIGINS = [
     *_PRODUCTION_ORIGINS,
     *app_settings.cors_origins_list,
 ]
-_cors_regex = (app_settings.CORS_ORIGIN_REGEX or "").strip()
+_cors_regex = (app_settings.CORS_ORIGIN_REGEX or "").strip() or r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,

@@ -40,8 +40,11 @@ def update_user_role(db: Session, user_id: int, new_role: str):
 # 2. PRODUCT CRUD
 # ==========================================
 
-def get_products(db: Session, skip: int = 0, limit: int = 100) -> List[models.Product]:
-    return db.query(models.Product).offset(skip).limit(limit).all()
+def get_products(db: Session, skip: int = 0, limit: int = 100, active_only: bool = False) -> List[models.Product]:
+    query = db.query(models.Product)
+    if active_only:
+        query = query.filter(models.Product.is_active == True)
+    return query.offset(skip).limit(limit).all()
 
 def get_product_by_id(db: Session, product_id: int) -> Optional[models.Product]:
     return db.query(models.Product).filter(models.Product.id == product_id).first()
