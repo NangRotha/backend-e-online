@@ -248,10 +248,33 @@ def _get_cloudinary():
     return cloudinary
 
 
-def faststart_mp4(data: bytes) -> bytes:
-    """Relocate the MP4 moov atom before mdat (Faststart) for instant web playback.
+def check_mp4_mov_has_moov(data: bytes) -> bool:
+    """Check if MP4/MOV has a moov atom. Returns False if truncated or missing."""
+    if len(data) < 32:
+        return False
+    pos = 0
+    while pos < len(data) - 8:
+        sz = struct.unpack(">I", data[pos : pos + 4])[0]
+        typ = data[pos + 4 : pos + 8]
+        if typ == b"moov":
+            return True
+        if sz == 1:
+            if pos + 16 > len(data):
+                break
+            sz = struct.unpack(">Q", data[pos + 8 : pos + 16])[0]
+        elif sz == 0:
+            break
+        if sz <= 0 or pos + sz > len(data):
+            break
+        pos += sz
+    return False
 
-    If moov is already before mdat or file is not a valid MP4, returns data unchanged.
+
+def faststart_mp4(data: bytes) -> bytes:
+    """Relocate the MP4/MOV moov atom before mdat (Faststart) for instant web playback.
+
+    Works for both .mp4 and .mov (QuickTime) files since they share the ISO BMFF structure.
+    If moov is already before mdat or file is not a valid MP4/MOV, returns data unchanged.
     Adjusts stco (32-bit) and co64 (64-bit) chunk offset tables.
     """
     if len(data) < 32:
@@ -349,8 +372,10 @@ def save_upload(content: bytes, filename: str, folder: str = "ecommerce") -> dic
     ext = Path(filename).suffix.lower()
     media_type = "video" if ext in ALLOWED_VIDEO_EXTENSIONS else "image"
 
-    # Faststart: ផ្លាស់ប្តូរ moov atom ទៅមុខឯកសារ MP4 ដើម្បីឱ្យ web player ចាក់ភ្លាមៗ
-    if ext in (".mp4", ".m4v"):
+    # Faststart: ផ្លាស់ប្តូរ moov atom ទៅមុខឯកសារ MP4 / MOV / M4V ដើម្បីឱ្យ web player ចាក់ភ្លាមៗ
+    if ext in (".mp4", ".m4v", ".mov"):
+        if not check_mp4_mov_has_moov(content):
+            print(f"⚠️ Video warning: {filename} ({len(content)} bytes) appears truncated or missing moov atom!", flush=True)
         content = faststart_mp4(content)
 
     # 1) UploadThing (ពេញចិត្តបំផុត)

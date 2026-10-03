@@ -162,7 +162,7 @@ _bootstrap_site_settings()
 
 
 def _optimize_existing_videos() -> None:
-    """ពិនិត្យ និង Optimize វីដេអូ MP4 ទាំងអស់ក្នុង uploads/ ឱ្យទៅជា Faststart ដោយស្វ័យប្រវត្តិ
+    """ពិនិត្យ និង Optimize វីដេអូ MP4/MOV ទាំងអស់ក្នុង uploads/ ឱ្យទៅជា Faststart ដោយស្វ័យប្រវត្តិ
     ដើម្បីឱ្យ Browser អាច Play ភ្លាមៗ (moov atom នៅខាងដើម)។"""
     from .storage import DEFAULT_UPLOAD_DIR, UPLOAD_DIR, faststart_mp4
 
@@ -172,27 +172,28 @@ def _optimize_existing_videos() -> None:
         if not d.exists() or not d.is_dir():
             continue
         try:
-            for mp4_file in d.glob("*.mp4"):
-                canonical = str(mp4_file.resolve())
-                if canonical in seen:
-                    continue
-                seen.add(canonical)
-                try:
-                    size = mp4_file.stat().st_size
-                    if size < 32:
+            for pattern in ("*.mp4", "*.mov", "*.m4v"):
+                for video_file in d.glob(pattern):
+                    canonical = str(video_file.resolve())
+                    if canonical in seen:
                         continue
-                    raw = mp4_file.read_bytes()
-                    optimized = faststart_mp4(raw)
-                    if len(optimized) != len(raw) or optimized[:32] != raw[:32]:
-                        mp4_file.write_bytes(optimized)
-                        count += 1
-                        print(f"🎬 Faststart optimized: {mp4_file.name} ({size} bytes)", flush=True)
-                except Exception as exc:
-                    print(f"⚠️ Faststart error on {mp4_file.name}: {exc}", flush=True)
+                    seen.add(canonical)
+                    try:
+                        size = video_file.stat().st_size
+                        if size < 32:
+                            continue
+                        raw = video_file.read_bytes()
+                        optimized = faststart_mp4(raw)
+                        if len(optimized) != len(raw) or optimized[:32] != raw[:32]:
+                            video_file.write_bytes(optimized)
+                            count += 1
+                            print(f"🎬 Faststart optimized: {video_file.name} ({size} bytes)", flush=True)
+                    except Exception as exc:
+                        print(f"⚠️ Faststart error on {video_file.name}: {exc}", flush=True)
         except Exception:
             pass
     if count:
-        print(f"✅ Video optimization: បានកែសម្រួល {count} MP4 ទៅជា Faststart រួចរាល់", flush=True)
+        print(f"✅ Video optimization: បានកែសម្រួល {count} វីដេអូ (MP4/MOV) ទៅជា Faststart រួចរាល់", flush=True)
 
 
 # 🎬 Optimize វីដេអូដែលធ្លាប់ Upload ពីមុនឱ្យទៅជា Faststart
@@ -250,10 +251,10 @@ app.add_middleware(
 # Security Headers Middleware — ការពារ Clickjacking, MIME-sniffing, XSS & Information Disclosure
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
-    # Enforce request payload size safety (max 100MB)
+    # Enforce request payload size safety (max 250MB for high-res product videos)
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > 100 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Payload too large")
+    if content_length and int(content_length) > 250 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Payload too large (max 250MB)")
 
     response = await call_next(request)
 
@@ -275,7 +276,7 @@ _EFFECTIVE_UPLOAD_DIR = ensure_upload_dir()
 @app.get("/uploads/{file_path:path}")
 async def serve_upload_file(file_path: str, request: Request):
     """បម្រើ File ក្នុង uploads ជាមួយ Range Requests (206 Partial Content)
-    ចាំបាច់សម្រាប់ HTML5 Video streaming (MP4/WebM) ដើម្បីឱ្យ Browser ចាក់ភ្លាមៗ។"""
+    ចាំបាច់សម្រាប់ HTML5 Video streaming (MP4/MOV/WebM) ដើម្បីឱ្យ Browser ចាក់ភ្លាមៗ។"""
     from .storage import DEFAULT_UPLOAD_DIR
 
     clean_name = os.path.normpath(file_path).lstrip("/\\")
@@ -295,21 +296,27 @@ async def serve_upload_file(file_path: str, request: Request):
     mtime = full_path.stat().st_mtime
     etag = f'"{hashlib.md5(f"{file_size}-{mtime}".encode()).hexdigest()}"'
 
-    media_type, _ = mimetypes.guess_type(str(full_path))
-    if not media_type:
-        ext = full_path.suffix.lower()
-        if ext in (".mp4", ".m4v"):
-            media_type = "video/mp4"
-        elif ext == ".webm":
-            media_type = "video/webm"
-        elif ext in (".jpg", ".jpeg"):
-            media_type = "image/jpeg"
-        elif ext == ".png":
-            media_type = "image/png"
-        elif ext == ".webp":
-            media_type = "image/webp"
-        else:
-            media_type = "application/octet-stream"
+    ext = full_path.suffix.lower()
+    # 💡 សម្រាប់ HTML5 Video Player លើ Chrome, Android និង Windows៖
+    # ឯកសារ .mov (QuickTime ពី iPhone) ត្រូវតែបម្រើជា "video/mp4" ទើប Browser អាច Decode ចាក់បាន។
+    # បើបម្រើជា "video/quicktime" នោះ Chrome នឹងបដិសេធមិនចាក់ (loading spinner forever)។
+    if ext in (".mp4", ".m4v", ".mov"):
+        media_type = "video/mp4"
+    elif ext == ".webm":
+        media_type = "video/webm"
+    elif ext == ".ogg":
+        media_type = "video/ogg"
+    else:
+        media_type, _ = mimetypes.guess_type(str(full_path))
+        if not media_type:
+            if ext in (".jpg", ".jpeg"):
+                media_type = "image/jpeg"
+            elif ext == ".png":
+                media_type = "image/png"
+            elif ext == ".webp":
+                media_type = "image/webp"
+            else:
+                media_type = "application/octet-stream"
 
     # HEAD Request -> ត្រឡប់ headers រួមទាំង Accept-Ranges
     if request.method == "HEAD":
